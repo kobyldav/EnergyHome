@@ -9,7 +9,7 @@ Track electricity, gas, water, heating, meter readings, payments and consumption
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](https://github.com/kobyldav/EnergyHome)
 [![Python](https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/v/release/kobyldav/EnergyHome?include_prereleases)](https://github.com/kobyldav/EnergyHome/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/kobyldav/EnergyHome)](https://github.com/kobyldav/EnergyHome/releases)
 
 </div>
 
