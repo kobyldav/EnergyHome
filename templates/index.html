@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Domácí energie</title>
+  <link rel="icon" type="image/x-icon" href="/static/images/icon.ico">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <button
+        class="language-switch"
+        id="languageSwitch"
+        type="button"
+        aria-label="Přepnout do angličtiny"
+        title="English"
+      >
+        <svg
+          id="languageFlag"
+          class="language-flag"
+          viewBox="0 0 30 20"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <rect width="30" height="10" fill="#fff"/>
+          <rect y="10" width="30" height="10" fill="#d7141a"/>
+          <path d="M0 0L13 10L0 20Z" fill="#11457e"/>
+        </svg>
+      </button>
+      <div><strong>Přehled energie</strong><span>analýza spotřeby</span></div>
+    </div>
+    <nav>
+      <div class="nav-group-label">Přehled</div>
+      <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
+      <div class="nav-group-label">Měření a spotřeba</div>
+      <button class="nav-btn" data-tab="readings">Měřidla a odečty</button>
+      <button class="nav-btn" data-tab="appliances">Spotřebiče</button>
+      <button class="nav-btn" data-tab="heating">Topení a radiátory</button>
+      <div class="nav-group-label">Finance</div>
+      <button class="nav-btn" data-tab="tariffs">Ceníky</button>
+      <button class="nav-btn" data-tab="advances">Zálohy</button>
+      <div class="nav-group-label">Systém</div>
+      <button class="nav-btn" data-tab="settings">Nastavení</button>
+    </nav>
+    <div class="sidebar-foot"><span class="local-dot"></span> Pouze lokální data<small>127.0.0.1 · JSON</small></div>
+  </aside>
+
+  <main class="content">
+    <header class="topbar">
+      <div><p class="eyebrow">ENERGETICKÝ ERP</p><h1 id="pageTitle">Dashboard</h1></div>
+      <div class="top-actions"><span id="saveState" class="save-state">Připraveno</span><button class="btn secondary" onclick="reloadState()">Obnovit</button></div>
+    </header>
+
+    <section id="tab-dashboard" class="tab-panel active">
+      <div id="emptyHint" class="empty-hint hidden"></div>
+      <div class="kpi-grid">
+        <article class="card kpi"><span>Elektřina</span><strong id="kpiElectricity">—</strong><small>poslední období</small></article>
+        <article class="card kpi"><span>Studená voda</span><strong id="kpiColdWater">—</strong><small>poslední období</small></article>
+        <article class="card kpi"><span>Teplá voda</span><strong id="kpiHotWater">—</strong><small>poslední období</small></article>
+        <article class="card kpi"><span>Plyn</span><strong id="kpiGas">—</strong><small>poslední období</small></article>
+        <article class="card kpi"><span>Teplo</span><strong id="kpiHeat">—</strong><small>součet radiátorů · poslední období</small></article>
+        <article class="card kpi accent"><span>Náklady</span><strong id="kpiCost">—</strong><small id="kpiMonth">bez dat</small></article>
+      </div>
+
+      <div class="grid two">
+        <article class="card finance-card">
+          <div class="card-head"><div><p class="eyebrow">ZÚČTOVÁNÍ</p><h2>Finanční pozice</h2></div><span id="billingPeriod" class="pill">—</span></div>
+          <div class="balance-row"><div><small>Aktuálně</small><strong id="currentBalance">—</strong></div><div><small>Predikce konce období</small><strong id="projectedBalance">—</strong></div></div>
+          <div class="thermometer finance"><div id="thermoFill" class="thermo-fill"></div><div class="thermo-mid"></div></div>
+          <div class="thermo-labels"><span>Nedoplatek</span><span>0</span><span>Přeplatek</span></div>
+          <div class="mini-grid"><div><small>Zaplacené zálohy</small><b id="paidTotal">—</b></div><div><small>Skutečné náklady</small><b id="actualCost">—</b></div></div>
+        </article>
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">DETEKTIV</p><h2>Upozornění</h2></div></div>
+          <div id="alerts" class="alerts"></div>
+        </article>
+      </div>
+
+      <article class="card heat-dashboard-card">
+        <div class="card-head"><div><p class="eyebrow">TOPENÍ</p><h2>Spotřeba radiátorů podle místností</h2></div><button class="btn secondary small" onclick="openTab('heating')">Spravovat topné měřiče</button></div>
+        <div id="heatAllocatorDashboard"></div>
+      </article>
+
+      <div class="grid two">
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">NÁKLADY</p><h2>Fixní vs. proměnlivé</h2></div></div><canvas id="costChart" height="280"></canvas></article>
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">ELEKTŘINA</p><h2>Vrstvená spotřeba</h2></div></div><canvas id="usageChart" height="280"></canvas></article>
+      </div>
+      <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">ZÚČTOVÁNÍ</p><h2>Vodopádový přehled</h2></div></div><canvas id="waterfallChart" height="260"></canvas></article>
+    </section>
+
+    <section id="tab-readings" class="tab-panel">
+      <div class="grid two">
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">MĚŘIDLA</p><h2>Přidat měřidlo</h2></div></div>
+          <form id="meterForm" class="form-grid">
+            <input type="hidden" name="id">
+            <label class="full">Název<input type="text" name="name" placeholder="Hlavní elektroměr" required></label>
+            <label>Typ<select name="utility"><option value="electricity">Elektřina</option><option value="cold_water">Studená voda</option><option value="hot_water">Teplá voda</option><option value="gas">Plyn</option></select></label>
+            <label>Počáteční stav<input type="number" step="0.001" min="0" name="base_value" value="0" required></label>
+            <label class="full">Stav platí k datu<input type="date" name="base_date" required></label>
+            <button class="btn primary full" type="submit">Uložit měřidlo</button>
+          </form>
+          <p class="help">Počáteční stav je skutečná hodnota na měřidle při zavedení do aplikace. Nemusí být 0.</p>
+        </article>
+
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">ODEČET</p><h2>Zadat jeden odečet</h2></div><span class="pill success">jednotlivě</span></div>
+          <form id="meterReadingForm" class="form-grid">
+            <label class="full">Měřidlo<select name="meter_id" id="readingMeter" required></select></label>
+            <label>Datum odečtu<input type="date" name="date" required></label>
+            <label>Stav měřidla<input type="number" step="0.001" min="0" name="value" required></label>
+            <button class="btn primary full" type="submit">Uložit odečet</button>
+          </form>
+          <p class="help">Každé měřidlo má vlastní historii.</p>
+        </article>
+      </div>
+
+      <div class="grid two">
+        <article class="card"><div class="card-head"><div><p class="eyebrow">SEZNAM</p><h2>Měřidla</h2></div></div><div id="meterList" class="item-list"></div></article>
+        <article class="card"><div class="card-head"><div><p class="eyebrow">HISTORIE</p><h2>Jednotlivé odečty</h2></div></div><div class="table-wrap"><table><thead><tr><th>Datum</th><th>Měřidlo</th><th>Stav</th><th></th></tr></thead><tbody id="meterReadingsTable"></tbody></table></div></article>
+      </div>
+    </section>
+
+    <section id="tab-appliances" class="tab-panel">
+      <div class="grid form-layout">
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">PROFILY</p><h2>Přidat spotřebič</h2></div></div>
+          <form id="applianceForm" class="form-grid">
+            <input type="hidden" name="id">
+            <label class="full">Název<input type="text" name="name" placeholder="Pračka" required></label>
+            <label>Typ<select name="kind" id="applianceKind"><option value="active">Aktivní / cyklický</option><option value="passive">Pasivní / trvalý</option></select></label><div></div>
+            <div id="activeFields" class="field-group full">
+              <label>kWh / cyklus<input type="number" step="0.001" name="electricity_kwh_per_cycle" value="0"></label>
+              <label>l studené vody / cyklus<input type="number" step="0.1" name="cold_water_l_per_cycle" value="0"></label>
+              <label>l teplé vody / cyklus<input type="number" step="0.1" name="hot_water_l_per_cycle" value="0"></label>
+              <label>m³ plynu / cyklus<input type="number" step="0.001" name="gas_m3_per_cycle" value="0"></label>
+            </div>
+            <div id="passiveFields" class="field-group full hidden">
+              <label>kWh / den<input type="number" step="0.001" name="electricity_kwh_per_day" value="0"></label>
+              <label>l studené vody / den<input type="number" step="0.1" name="cold_water_l_per_day" value="0"></label>
+              <label>l teplé vody / den<input type="number" step="0.1" name="hot_water_l_per_day" value="0"></label>
+              <label>m³ plynu / den<input type="number" step="0.001" name="gas_m3_per_day" value="0"></label>
+            </div>
+            <button class="btn primary full" type="submit">Uložit profil</button>
+          </form>
+        </article>
+        <article class="card"><div class="card-head"><div><p class="eyebrow">SEZNAM</p><h2>Spotřebiče</h2></div></div><div id="applianceList" class="item-list"></div></article>
+      </div>
+      <article class="card cycle-card">
+        <div class="card-head"><div><p class="eyebrow">MĚSÍČNÍ VSTUP</p><h2>Počet cyklů aktivních spotřebičů</h2></div></div>
+        <form id="cycleForm" class="form-grid"><label>Měsíc<input type="month" name="month" required></label><div></div><div id="cycleFields" class="cycle-fields full"></div><button class="btn primary full" type="submit">Uložit počty cyklů</button></form>
+      </article>
+    </section>
+
+    <section id="tab-heating" class="tab-panel">
+      <div class="grid two">
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">RADIÁTOR</p><h2>Přidat topný měřič</h2></div></div>
+          <form id="heatAllocatorForm" class="form-grid">
+            <input type="hidden" name="id">
+            <label>Místnost<input type="text" name="room" placeholder="Obývací pokoj" required></label>
+            <label>Název měřiče<input type="text" name="name" placeholder="Radiátor u okna" required></label>
+            <label>Číslo měřiče <span class="optional">(volitelné)</span><input type="text" name="serial_number" placeholder="např. 0185421"></label>
+            <label>Jednotka odečtu<input type="text" name="unit" value="jednotek" placeholder="jednotek"></label>
+            <label>Počáteční stav<input type="number" step="0.001" min="0" name="base_value" value="0" required></label>
+            <label>Počáteční stav platí k<input type="date" name="base_date" required></label>
+            <label class="full">Přepočtový koeficient <span class="optional">(pokud ho znáte)</span><input type="number" step="0.0001" min="0.0001" name="coefficient" value="1"></label>
+            <button class="btn primary full" type="submit">Uložit topný měřič</button>
+          </form>
+          <p class="help">Jde o odečtové zařízení připevněné na radiátoru. Koeficient ponechte 1, pokud neznáte oficiální přepočet pro konkrétní radiátor.</p>
+        </article>
+
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">ODEČET TOPENÍ</p><h2>Zadat stav radiátoru</h2></div><span class="pill success">jednotlivě</span></div>
+          <form id="heatAllocatorReadingForm" class="form-grid">
+            <label class="full">Topný měřič<select name="allocator_id" id="heatAllocatorReadingSelect" required></select></label>
+            <label>Datum odečtu<input type="date" name="date" required></label>
+            <label>Stav na displeji<input type="number" step="0.001" min="0" name="value" required></label>
+            <label class="checkbox-label full"><input type="checkbox" name="reset" value="true"> <span>Měřič byl před tímto odečtem vynulován / vyměněn</span></label>
+            <button class="btn primary full" type="submit">Uložit odečet topení</button>
+          </form>
+          <p class="help">Spotřeba se počítá jako konstatní poměr např. v osobním domě. Ale v panelovém domě se cena rozchází o poměr rozlohy...</p>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="card-head"><div><p class="eyebrow">MÍSTNOSTI</p><h2>Souhrn vytápění</h2></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Místnost</th><th>Počet radiátorů</th><th>Poslední přírůstek</th><th>Celkem od založení</th></tr></thead><tbody id="heatRoomSummaryTable"></tbody></table></div>
+      </article>
+
+      <div class="grid two">
+        <article class="card"><div class="card-head"><div><p class="eyebrow">SEZNAM</p><h2>Topné měřiče</h2></div></div><div id="heatAllocatorList" class="item-list"></div></article>
+        <article class="card"><div class="card-head"><div><p class="eyebrow">HISTORIE</p><h2>Odečty topení</h2></div></div><div class="table-wrap"><table><thead><tr><th>Datum</th><th>Místnost / měřič</th><th>Stav</th><th>Rozdíl</th><th></th></tr></thead><tbody id="heatAllocatorReadingsTable"></tbody></table></div></article>
+      </div>
+
+      <div class="notice"><strong>Provizorní definice tepla.</strong><p>Celková spotřeba tepla se nyní počítá jako součet přepočtených přírůstků všech radiátorových měřičů. Tato hodnota se používá jako „Teplo“ v dashboardu i ve finančním výpočtu. Jednotka zatím není ověřená GJ a později ji lze nahradit přesným převodem.</p></div>
+    </section>
+
+    <section id="tab-tariffs" class="tab-panel">
+      <div class="grid form-layout">
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">HISTORIE CEN</p><h2>Nová verze ceníku</h2></div></div>
+          <form id="tariffForm" class="form-grid">
+            <input type="hidden" name="id">
+            <label class="full">Platí od<input type="date" name="effective_from" required></label>
+            <label>Elektřina [Kč/kWh]<input type="number" step="0.0001" name="electricity_per_kwh" value="0"></label>
+            <label>Studená voda [Kč/m³]<input type="number" step="0.0001" name="cold_water_per_m3" value="0"></label>
+            <label>Teplá voda [Kč/m³]<input type="number" step="0.0001" name="hot_water_per_m3" value="0"></label>
+            <label>Plyn [Kč/m³]<input type="number" step="0.0001" name="gas_per_m3" value="0"></label>
+            <label>Teplo [Kč / provizorní jednotku]<input type="number" step="0.0001" name="heat_per_gj" value="0"></label>
+            <div class="full tariff-separator"><strong>Fixní poplatky za měsíc</strong><span>Každé médium má vlastní fixní část.</span></div>
+            <label>Elektřina – fix [Kč/měsíc]<input type="number" step="0.01" name="electricity_fixed_monthly" value="0"></label>
+            <label>Studená voda – fix [Kč/měsíc]<input type="number" step="0.01" name="cold_water_fixed_monthly" value="0"></label>
+            <label>Teplá voda – fix [Kč/měsíc]<input type="number" step="0.01" name="hot_water_fixed_monthly" value="0"></label>
+            <label>Plyn – fix [Kč/měsíc]<input type="number" step="0.01" name="gas_fixed_monthly" value="0"></label>
+            <label>Teplo – fix [Kč/měsíc]<input type="number" step="0.01" name="heat_fixed_monthly" value="0"></label>
+            <button class="btn primary full" type="submit">Uložit ceník od tohoto data</button>
+          </form>
+          <div class="notice"><strong>Ceníky se nepřepisují zpětně.</strong><p>Nový ceník platí od zadaného data. Starší měsíce zůstávají počítané podle staršího ceníku.</p></div>
+        </article>
+        <article class="card"><div class="card-head"><div><p class="eyebrow">CENÍKY</p><h2>Historie platnosti</h2></div></div><div id="tariffList" class="item-list"></div></article>
+      </div>
+    </section>
+
+    <section id="tab-advances" class="tab-panel">
+      <div class="grid form-layout">
+        <article class="card">
+          <div class="card-head"><div><p class="eyebrow">ENERGIE</p><h2>Měsíční zálohy</h2></div></div>
+          <form id="advanceForm" class="form-grid">
+            <input type="hidden" name="id">
+            <label class="full">Platí od<input type="date" name="effective_from" required></label>
+            <label>Elektřina [Kč/měsíc]<input type="number" step="0.01" name="electricity_monthly" value="0"></label>
+            <label>Studená voda [Kč/měsíc]<input type="number" step="0.01" name="cold_water_monthly" value="0"></label>
+            <label>Teplá voda [Kč/měsíc]<input type="number" step="0.01" name="hot_water_monthly" value="0"></label>
+            <label>Plyn [Kč/měsíc]<input type="number" step="0.01" name="gas_monthly" value="0"></label>
+            <label>Teplo [Kč/měsíc]<input type="number" step="0.01" name="heat_monthly" value="0"></label>
+            <button class="btn primary full" type="submit">Uložit zálohy od tohoto data</button>
+          </form>
+          <p class="help">Tady se zadávají pouze zálohy: elektřina, studená voda, teplá voda, plyn a teplo. Každá změna platí od zadaného data dál.</p>
+        </article>
+        <article class="card"><div class="card-head"><div><p class="eyebrow">HISTORIE</p><h2>Změny záloh</h2></div></div><div id="advanceList" class="item-list"></div></article>
+      </div>
+    </section>
+
+    <section id="tab-settings" class="tab-panel">
+      <article class="card settings-card">
+        <div class="card-head"><div><p class="eyebrow">SYSTÉM</p><h2>Nastavení domácnosti</h2></div></div>
+        <form id="settingsForm" class="form-grid">
+          <label class="full">Název domácnosti<input type="text" name="household_name"></label>
+          <label>Začátek zúčtovacího období<select name="billing_start_month" id="billingStartMonth"></select></label>
+          <label>Měna<input type="text" name="currency" value="CZK"></label>
+          <label>Citlivost detektiva [%]<input type="number" step="1" min="0" name="unassigned_alert_ratio_pct" value="30"></label><div></div>
+          <button class="btn primary full" type="submit">Uložit nastavení</button>
+        </form>
+        <div class="notice"><strong>Data zůstávají v počítači.</strong><p>Soubor je uložen v <code>data/energy_data.json</code>. Při každém uložení vzniká také záložní kopie.</p></div>
+      </article>
+    </section>
+  </main>
+</div>
+
+<a
+  class="powered-badge"
+  href="https://github.com/kobyldav"
+  target="_blank"
+  rel="noopener noreferrer"
+  aria-label="GitHub Davida Kobylky"
+>
+  <span class="powered-badge-inner">
+    <span class="powered-badge-face powered-badge-front">
+      <small>POWERED BY</small>
+      <strong>David Kobylka</strong>
+    </span>
+    <span class="powered-badge-face powered-badge-back">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 .7C5.73.7.7 5.83.7 12.1c0 5.02 3.26 9.27 7.79 10.77.57.1.78-.25.78-.55v-2.17c-3.17.69-3.84-1.36-3.84-1.36-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.25 3.33.95.1-.74.4-1.25.73-1.54-2.53-.29-5.19-1.27-5.19-5.64 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.45.11-3.02 0 0 .96-.31 3.14 1.17A10.9 10.9 0 0 1 12 6.07c.97 0 1.94.13 2.85.38 2.18-1.48 3.14-1.17 3.14-1.17.62 1.57.23 2.73.11 3.02.74.8 1.18 1.82 1.18 3.07 0 4.38-2.67 5.34-5.21 5.62.41.35.77 1.05.77 2.12v3.21c0 .3.21.66.79.55 4.52-1.51 7.77-5.75 7.77-10.77C23.4 5.83 18.27.7 12 .7Z"/>
+      </svg>
+      <strong>GitHub</strong>
+      <span class="powered-badge-arrow">↗</span>
+    </span>
+  </span>
+</a>
+<div id="toast" class="toast"></div>
+<script src="/static/i18n.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
