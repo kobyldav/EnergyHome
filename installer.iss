@@ -1,7 +1,7 @@
 #define MyAppName "Energy Home"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "KobylDav"
-#define MyAppURL "https://github.com/kobyldav"
+#define MyAppURL "https://github.com/kobyldav/EnergyHome"
 #define MyAppExeName "EnergyHome.exe"
 
 [Setup]
@@ -17,8 +17,13 @@ DefaultDirName={localappdata}\Programs\Energy Home
 DefaultGroupName=Energy Home
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-SetupArchitecture=x64
+
+; Compatible with Inno Setup 6.3+ and Inno Setup 7.
+; EnergyHome.exe is x64, so only x64-capable Windows is allowed
+; and the installer uses 64-bit install mode on those systems.
 ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+
 OutputDir=release
 OutputBaseFilename=EnergyHome-{#MyAppVersion}-Setup
 SetupIconFile=static\images\icon.ico
