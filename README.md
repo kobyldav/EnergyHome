@@ -299,15 +299,14 @@ The project is being prepared to use free code signing for eligible open-source 
 
 The goal is to ensure that users can verify that official Energy Home binaries originate from the project's trusted build process and have not been modified after signing.
 
-### Code signing policy
+## Code signing policy
 
-Free code signing is provided by **SignPath.io**, with a certificate provided by the **SignPath Foundation**.
+Energy Home is preparing official Windows releases for open-source code signing.
 
-Only binaries generated from the official Energy Home source repository and approved release workflow are eligible to be published as official releases.
+**Free code signing provided by SignPath.io, certificate by SignPath Foundation.**
 
-More detailed signing and release policies may be documented separately as the automated release infrastructure is introduced.
+See the full [Code signing policy](CODE_SIGNING_POLICY.md) and [Privacy Policy](PRIVACY.md).
 
----
 
 ## Release integrity
 
