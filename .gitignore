@@ -1,0 +1,20 @@
+# Private/local Energy Home data
+data/energy_data.json
+data/energy_data.backup.json
+data/energy_data*.json
+runtime.json
+browser-profile/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Build
+build/
+dist/
+release/
+
+# Temporary files
+*.tmp
+*.log
