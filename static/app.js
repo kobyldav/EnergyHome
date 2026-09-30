@@ -196,7 +196,7 @@ function editAdvance(id){const x=STATE.data.advances.find(v=>v.id===id);if(!x)re
 
 function ctx(canvas){
   const c=$(canvas),r=Math.max(1,window.devicePixelRatio||1),w=Math.max(280,c.clientWidth||700),h=Number(c.getAttribute('height')||260);
-  c.style.width='100%';c.style.height=\`\${h}px\`;c.width=Math.floor(w*r);c.height=Math.floor(h*r);
+  c.style.width='100%';c.style.height=`${h}px`;c.width=Math.floor(w*r);c.height=Math.floor(h*r);
   const x=c.getContext('2d');x.setTransform(r,0,0,r,0,0);x.clearRect(0,0,w,h);x.font='12px Segoe UI';x.textBaseline='alphabetic';
   return {c,x,w,h};
 }
@@ -237,7 +237,7 @@ function drawApplianceChart(m){
   rows.push({name:'Ostatní používání',value:Number(m.unassigned?.electricity||0),other:true});
   const shown=rows.slice(0,8);if(rows.length>8){const rest=rows.slice(8).reduce((s,r)=>s+r.value,0);shown.push({name:'Další spotřebiče',value:rest})}
   const max=Math.max(...shown.map(r=>r.value),1),left=Math.min(150,Math.max(100,w*.28)),top=26,rowH=Math.min(30,(h-top-18)/Math.max(1,shown.length)),barW=w-left-25;
-  shown.forEach((r,i)=>{const y=top+i*rowH;x.fillStyle='#5f6b75';x.textAlign='right';x.fillText(shortText(x,r.name,left-18),left-10,y+13);x.fillStyle=r.other?'#c3a25d':'#277f72';x.fillRect(left,y,Math.max(2,r.value/max*barW),15);x.fillStyle='#4f5b65';x.textAlign='left';x.fillText(\`\${nf.format(r.value)} kWh\`,Math.min(w-70,left+r.value/max*barW+6),y+13)});x.textAlign='left';
+  shown.forEach((r,i)=>{const y=top+i*rowH;x.fillStyle='#5f6b75';x.textAlign='right';x.fillText(shortText(x,r.name,left-18),left-10,y+13);x.fillStyle=r.other?'#c3a25d':'#277f72';x.fillRect(left,y,Math.max(2,r.value/max*barW),15);x.fillStyle='#4f5b65';x.textAlign='left';x.fillText(`${nf.format(r.value)} kWh`,Math.min(w-70,left+r.value/max*barW+6),y+13)});x.textAlign='left';
 }
 function drawCashflowChart(months){
   const {x,w,h}=ctx('#cashflowChart'),data=months.slice(-10);if(!data.length)return chartEmpty(x);
@@ -263,7 +263,7 @@ function drawExpenseTreeChart(months,billing){
   const rows=keys.map(k=>({name:utilityLabel[k],value:selected.reduce((s,m)=>s+Number(m.utility_costs?.[k]||0),0)})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
   const total=rows.reduce((s,r)=>s+r.value,0);if(total<=0)return chartEmpty(x);
   const colors=['#277f72','#5f9a91','#87aaa4','#a9956c','#8a6f5a'];let px=0;
-  rows.forEach((r,i)=>{const ww=i===rows.length-1?w-px:Math.round(w*r.value/total);x.fillStyle=colors[i%colors.length];x.fillRect(px,0,ww,h);if(ww>76){x.fillStyle='#fff';x.textAlign='left';x.font='700 13px Segoe UI';x.fillText(shortText(x,r.name,ww-18),px+9,24);x.font='12px Segoe UI';x.fillText(shortText(x,money(r.value),ww-18),px+9,44);x.fillText(\`\${Math.round(r.value/total*100)} %\`,px+9,62)}px+=ww});x.textAlign='left';x.font='12px Segoe UI';
+  rows.forEach((r,i)=>{const ww=i===rows.length-1?w-px:Math.round(w*r.value/total);x.fillStyle=colors[i%colors.length];x.fillRect(px,0,ww,h);if(ww>76){x.fillStyle='#fff';x.textAlign='left';x.font='700 13px Segoe UI';x.fillText(shortText(x,r.name,ww-18),px+9,24);x.font='12px Segoe UI';x.fillText(shortText(x,money(r.value),ww-18),px+9,44);x.fillText(`${Math.round(r.value/total*100)} %`,px+9,62)}px+=ww});x.textAlign='left';x.font='12px Segoe UI';
 }
 function drawWaterfall(b){
   const {x,w,h}=ctx('#waterfallChart');if(!b.start)return chartEmpty(x);
