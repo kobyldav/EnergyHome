@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 import webbrowser
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,8 @@ from energy_app.storage import JsonStore
 APP_NAME = "Energy Home"
 APP_VERSION = "1.0.0"
 RUNTIME_HEARTBEAT_INTERVAL = 3.0
-RUNTIME_HEARTBEAT_TIMEOUT = 20.0
+RUNTIME_HEARTBEAT_TIMEOUT = 300.0
+RUNTIME_SLEEP_GAP = 10.0
 RUNTIME_STARTUP_TIMEOUT = 30.0
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -345,9 +347,21 @@ def save_settings(p: dict) -> dict:
         "billing_start_month": min(12, max(1, integer(p.get("billing_start_month"), 1))),
         "currency": str(p.get("currency", "CZK")).strip() or "CZK",
         "unassigned_alert_ratio": max(0.0, number(p.get("unassigned_alert_ratio"), 0.30)),
+        "contract_review_interval_months": min(24, max(1, integer(
+            p.get("contract_review_interval_months"),
+            data["settings"].get("contract_review_interval_months", 6),
+        ))),
     })
     store.save(data)
     return {"ok": True}
+
+
+def mark_contract_reviewed(p: dict) -> dict:
+    data = store.load()
+    reviewed = valid_date(p.get("date") or date.today().isoformat())
+    data["settings"]["contract_last_reviewed"] = reviewed
+    store.save(data)
+    return {"ok": True, "date": reviewed}
 
 
 def mark_heartbeat() -> None:
@@ -489,16 +503,26 @@ def start_runtime_watchdog(server: ThreadingHTTPServer) -> None:
     started = time.monotonic()
 
     def watch() -> None:
+        last_tick = time.monotonic()
         while True:
             time.sleep(2.0)
+            now = time.monotonic()
+
+            # Windows suspend/resume creates a large scheduling gap. During that
+            # gap the browser cannot send heartbeats either, so reset the grace
+            # period instead of treating normal sleep as a closed application.
+            if (now - last_tick) > RUNTIME_SLEEP_GAP:
+                mark_heartbeat()
+                last_tick = now
+                continue
+            last_tick = now
 
             if _heartbeat_seen.is_set():
                 last = get_last_heartbeat()
-                if last and (time.monotonic() - last) > RUNTIME_HEARTBEAT_TIMEOUT:
+                if last and (now - last) > RUNTIME_HEARTBEAT_TIMEOUT:
                     server.shutdown()
                     return
-            elif (time.monotonic() - started) > RUNTIME_STARTUP_TIMEOUT:
-                # The UI never connected (browser failed to open, was blocked, etc.).
+            elif (now - started) > RUNTIME_STARTUP_TIMEOUT:
                 server.shutdown()
                 return
 
@@ -599,6 +623,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/heat-allocators": save_heat_allocator,
                 "/api/heat-allocator-readings": save_heat_allocator_reading,
                 "/api/settings": save_settings,
+                "/api/contract-review": mark_contract_reviewed,
             }
             fn = routes.get(path)
             if not fn:

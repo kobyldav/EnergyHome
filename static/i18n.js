@@ -48,6 +48,16 @@
     'Fixní vs. proměnlivé': 'Fixed vs. Variable',
     'ELEKTŘINA': 'ELECTRICITY',
     'Vrstvená spotřeba': 'Stacked Consumption',
+    'Spotřebiče vs. ostatní používání': 'Appliances vs. Other Usage',
+    'SPOTŘEBIČE': 'APPLIANCES',
+    'Co tvoří naměřenou spotřebu': 'What Makes Up Measured Consumption',
+    'CASH FLOW': 'CASH FLOW',
+    'Náklady vs. zálohy': 'Costs vs. Advance Payments',
+    'BILANCE': 'BALANCE',
+    'Vývoj přeplatku / nedoplatku': 'Credit / Amount Due Trend',
+    'Vývoj spotřeby tepla': 'Heating Consumption Trend',
+    'VÝDAJE': 'EXPENSES',
+    'Struktura výdajů podle médií': 'Expense Structure by Utility',
     'Vodopádový přehled': 'Waterfall Overview',
     'MĚŘIDLA': 'METERS',
     'Přidat měřidlo': 'Add Meter',
@@ -155,6 +165,7 @@
     'Začátek zúčtovacího období': 'Billing Period Start',
     'Měna': 'Currency',
     'Citlivost detektiva [%]': 'Detector Sensitivity [%]',
+    'Kontrola smluv každých [měsíců]': 'Review Contracts Every [months]',
     'Uložit nastavení': 'Save Settings',
     'Data zůstávají v počítači.': 'Data stays on this computer.',
     'Soubor je uložen v': 'The file is stored in',
@@ -179,7 +190,8 @@
     'Fixní': 'Fixed',
     'Proměnlivé': 'Variable',
     'Ano': 'Yes',
-    'Ne': 'No'
+    'Ne': 'No',
+    'Označit jako zkontrolováno': 'Mark as Reviewed'
   };
 
   const ATTRIBUTE_TRANSLATIONS = {

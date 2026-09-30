@@ -14,6 +14,8 @@ DEFAULT_DATA = {
         "billing_start_month": 3,
         "currency": "CZK",
         "unassigned_alert_ratio": 0.30,
+        "contract_review_interval_months": 6,
+        "contract_last_reviewed": "",
     },
     "meters": [],
     "meter_readings": [],
