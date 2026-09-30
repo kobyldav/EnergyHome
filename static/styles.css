@@ -207,3 +207,13 @@ button,input,select{font:inherit}
 @media(prefers-reduced-motion:reduce){
   .language-switch,.powered-badge-inner,.powered-badge-arrow{transition:none}
 }
+
+
+/* Analytics expansion: keep the existing flat visual language while making
+   canvases resilient to long labels and narrow windows. */
+.chart-card{min-width:0;overflow:hidden}
+.chart-card canvas{display:block;width:100%!important;max-width:100%;min-width:0}
+.alert{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.alert>span{min-width:0;overflow-wrap:anywhere}
+.alert-action{flex:0 0 auto;white-space:nowrap}
+@media(max-width:650px){.alert{display:block}.alert-action{margin-top:10px}}

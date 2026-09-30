@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
+from datetime import date
 from typing import Any
 
 UTILITIES = {
@@ -220,18 +221,50 @@ def compute_months(data: dict) -> list[dict[str, Any]]:
 
     for month in months:
         measured = measured_by_month[month]
-        passive = {u: 0.0 for u in UTILITIES}
-        active = {u: 0.0 for u in UTILITIES}
-        appliance_breakdown = []
+        estimated_passive = {u: 0.0 for u in UTILITIES}
+        estimated_active = {u: 0.0 for u in UTILITIES}
+        raw_appliance_breakdown = []
         for a in appliances:
             cyc = cycle_map.get((month, a.get("id")), 0)
             usage = _appliance_month_usage(a, cyc, month)
-            target = passive if a.get("kind") == "passive" else active
+            target = estimated_passive if a.get("kind") == "passive" else estimated_active
             for u in UTILITIES:
                 target[u] += usage[u]
-            appliance_breakdown.append({"id": a.get("id"), "name": a.get("name"), "kind": a.get("kind"), "cycles": cyc, "usage": usage})
+            raw_appliance_breakdown.append({
+                "id": a.get("id"),
+                "name": a.get("name"),
+                "kind": a.get("kind"),
+                "cycles": cyc,
+                "estimated_usage": usage,
+            })
 
-        unassigned = {u: measured[u] - passive[u] - active[u] for u in UTILITIES}
+        # Appliance profiles explain the measured meter delta. They never add
+        # consumption on top of it. If profiles overestimate the meter, scale
+        # the attribution proportionally and surface a diagnostic warning.
+        attribution_scale = {}
+        overestimated = {}
+        passive = {}
+        active = {}
+        unassigned = {}
+        for u in UTILITIES:
+            estimated_total = estimated_passive[u] + estimated_active[u]
+            measured_total = max(0.0, float(measured.get(u, 0.0) or 0.0))
+            scale = min(1.0, measured_total / estimated_total) if estimated_total > 0 else 1.0
+            attribution_scale[u] = scale
+            passive[u] = estimated_passive[u] * scale
+            active[u] = estimated_active[u] * scale
+            unassigned[u] = max(0.0, measured_total - passive[u] - active[u])
+            overestimated[u] = max(0.0, estimated_total - measured_total)
+
+        appliance_breakdown = []
+        for item in raw_appliance_breakdown:
+            estimated_usage = item["estimated_usage"]
+            attributed_usage = {u: estimated_usage[u] * attribution_scale[u] for u in UTILITIES}
+            appliance_breakdown.append({
+                **item,
+                "usage": attributed_usage,
+                "attributed_usage": attributed_usage,
+            })
         tariff = tariff_for_month(tariffs, month)
         advance_rule = advance_for_month(advances, month)
         variable_costs = {u: measured[u] * float(tariff.get(UTILITIES[u]["price"], 0) or 0) for u in UTILITIES}
@@ -250,6 +283,10 @@ def compute_months(data: dict) -> list[dict[str, Any]]:
             "heat_allocator_intervals": radiator_heat_details.get(month, []),
             "passive": passive,
             "active": active,
+            "estimated_passive": estimated_passive,
+            "estimated_active": estimated_active,
+            "attribution_scale": attribution_scale,
+            "overestimated": overestimated,
             "unassigned": unassigned,
             "appliances": appliance_breakdown,
             "tariff": tariff,
@@ -277,9 +314,12 @@ def add_alerts(months: list[dict], ratio_threshold: float = 0.30) -> None:
             unassigned = m["unassigned"][utility]
             if measured <= 0:
                 continue
-            if unassigned < -1e-6:
-                alerts.append({"severity": "danger", "text": f"Profily spotřebičů pro {UTILITIES[utility]['label'].lower()} převyšují naměřenou spotřebu."})
-                continue
+            overestimated = float(m.get("overestimated", {}).get(utility, 0) or 0)
+            if overestimated > 1e-6:
+                alerts.append({
+                    "severity": "danger",
+                    "text": f"Profily spotřebičů pro {UTILITIES[utility]['label'].lower()} převyšují skutečný odečet o {overestimated:.2f} {UTILITIES[utility]['unit']}. V grafech jsou proto omezené na skutečně naměřenou spotřebu."
+                })
             history = [x["unassigned"][utility] for x in months[max(0, i - 3):i] if x["unassigned"][utility] >= 0 and x["measured"][utility] > 0]
             if history:
                 avg = sum(history) / len(history)
@@ -383,6 +423,25 @@ def heat_allocator_summary(data: dict) -> dict[str, Any]:
     }
 
 
+def contract_review_status(data: dict) -> dict[str, Any]:
+    settings = data.get("settings", {})
+    interval = max(1, int(settings.get("contract_review_interval_months", 6) or 6))
+    last_reviewed = str(settings.get("contract_last_reviewed", "") or "")[:10]
+    tariff_dates = sorted(str(t.get("effective_from", ""))[:10] for t in data.get("tariffs", []) if t.get("effective_from"))
+    tariff_anchor = tariff_dates[-1] if tariff_dates else ""
+    anchor = max(last_reviewed, tariff_anchor)
+    if len(anchor) < 7:
+        return {"due": False, "interval_months": interval, "anchor": "", "next_due": ""}
+    next_due = month_from_index(month_index(anchor[:7]) + interval)
+    today_month = date.today().isoformat()[:7]
+    return {
+        "due": today_month >= next_due,
+        "interval_months": interval,
+        "anchor": anchor,
+        "next_due": next_due,
+    }
+
+
 def dashboard(data: dict) -> dict[str, Any]:
     months = compute_months(data)
     threshold = float(data.get("settings", {}).get("unassigned_alert_ratio", 0.30) or 0.30)
@@ -435,6 +494,7 @@ def dashboard(data: dict) -> dict[str, Any]:
             "heat_from_radiators": has_radiator_heat,
             "heat_definition_provisional": has_radiator_heat,
         },
+        "contract_review": contract_review_status(data),
         "billing": {
             "start": start,
             "end": end,

@@ -11,10 +11,22 @@ function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('sh
 function saveState(text='Ukládám…'){ $('#saveState').textContent=text; }
 function formatDateTime(v){ if(!v)return '—'; return String(v).replace('T',' '); }
 
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function api(url,options={}){
   options.headers={...(options.headers||{}),'Content-Type':'application/json'};
-  const res=await fetch(url,options); const body=await res.json().catch(()=>({}));
-  if(!res.ok) throw new Error(body.error||`Chyba ${res.status}`); return body;
+  let lastError;
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      const res=await fetch(url,{...options,cache:'no-store'});
+      const body=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(body.error||`Chyba ${res.status}`);
+      return body;
+    }catch(err){
+      lastError=err;
+      if(attempt<2) await sleep(350+attempt*650);
+    }
+  }
+  throw lastError;
 }
 async function reloadState(){ saveState('Načítám…'); STATE=await api('/api/state'); renderAll(); saveState('Připraveno'); }
 
@@ -63,11 +75,23 @@ function renderDashboard(){
   const balance=Number(b.projected_balance||0), max=Math.max(1000,Math.abs(balance)*1.2), pct=Math.min(50,Math.abs(balance)/max*50);
   const fill=$('#thermoFill'); fill.style.width=`${pct}%`; fill.style.left=balance>=0?'50%':`${50-pct}%`; fill.style.background=balance>=0?'#1f8a5b':'#c94b4b';
   const alerts=[...(m?.alerts||[])];
+  if(d.contract_review?.due) alerts.push({
+    severity:'warning',
+    text:`Od poslední kontroly/ceníku uplynulo alespoň ${d.contract_review.interval_months} měsíců. Zvažte porovnání smluv a aktuálních nabídek dodavatelů.`,
+    action:'contract-review'
+  });
   if(d.finance_notes?.heat_advance_without_cost) alerts.push({severity:'info',text:'Je evidovaná záloha na teplo, ale chybí cena tepla. Celková spotřeba tepla se nyní provizorně definuje jako součet přepočtených přírůstků všech radiátorových měřičů.'});
   if(d.finance_notes?.heat_definition_provisional) alerts.push({severity:'info',text:'Teplo je nyní provizorně počítáno jako součet všech radiátorových měřičů. Výsledná jednotka není ověřená GJ; později lze přidat přesný převod.'});
-  $('#alerts').innerHTML=alerts.length?alerts.map(a=>`<div class="alert ${a.severity}">${escapeHtml(a.text)}</div>`).join(''):'<div class="alert ok">Žádná mimořádná odchylka v posledním období.</div>';
+  $('#alerts').innerHTML=alerts.length?alerts.map(a=>`<div class="alert ${a.severity}"><span>${escapeHtml(a.text)}</span>${a.action==='contract-review'?'<button class="btn secondary small alert-action" onclick="markContractReviewed()">Označit jako zkontrolováno</button>':''}</div>`).join(''):'<div class="alert ok">Žádná mimořádná odchylka v posledním období.</div>';
   renderHeatAllocatorDashboard(d.heat_allocators||{});
-  drawCostChart(d.months||[]); drawUsageChart(d.months||[]); drawWaterfall(b);
+  drawCostChart(d.months||[]);
+  drawUsageChart(d.months||[]);
+  drawApplianceChart(m);
+  drawCashflowChart(d.months||[]);
+  drawBalanceTrendChart(d.months||[]);
+  drawHeatingTrendChart(d.months||[]);
+  drawExpenseTreeChart(d.months||[],b);
+  drawWaterfall(b);
 }
 
 function renderHeatAllocatorDashboard(summary){
@@ -141,7 +165,8 @@ function renderAdvances(){
   const list=[...(STATE.data.advances||[])].sort((a,b)=>b.effective_from.localeCompare(a.effective_from));
   $('#advanceList').innerHTML=list.map(a=>`<div class="item"><div><h3>Platí od ${a.effective_from}</h3><p>Elektřina ${money(a.electricity_monthly)} · studená voda ${money(a.cold_water_monthly)} · teplá voda ${money(a.hot_water_monthly)} · plyn ${money(a.gas_monthly)} · teplo ${money(a.heat_monthly)} · celkem <b>${money(Number(a.electricity_monthly||0)+Number(a.cold_water_monthly||0)+Number(a.hot_water_monthly||0)+Number(a.gas_monthly||0)+Number(a.heat_monthly||0))}</b></p></div><div class="item-actions"><button class="btn secondary small" onclick="editAdvance('${a.id}')">Upravit</button><button class="btn danger small" onclick="deleteAdvance('${a.id}')">Smazat</button></div></div>`).join('')||'<p class="help">Zatím nejsou zadané žádné zálohy.</p>';
 }
-function renderSettings(){ const s=STATE.data.settings||{}, f=$('#settingsForm'); f.household_name.value=s.household_name||''; f.billing_start_month.value=s.billing_start_month||1; f.currency.value=s.currency||'CZK'; f.unassigned_alert_ratio_pct.value=Math.round(Number(s.unassigned_alert_ratio||.3)*100); }
+function renderSettings(){ const s=STATE.data.settings||{}, f=$('#settingsForm'); f.household_name.value=s.household_name||''; f.billing_start_month.value=s.billing_start_month||1; f.currency.value=s.currency||'CZK'; f.unassigned_alert_ratio_pct.value=Math.round(Number(s.unassigned_alert_ratio||.3)*100); if(f.contract_review_interval_months)f.contract_review_interval_months.value=s.contract_review_interval_months||6; }
+async function markContractReviewed(){try{await api('/api/contract-review',{method:'POST',body:JSON.stringify({})});toast('Kontrola smluv označena jako hotová');await reloadState()}catch(err){toast(err.message)}}
 
 $('#meterForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/meters',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries()))});e.target.reset();e.target.elements.id.value='';saveState();toast('Měřidlo uloženo');await reloadState()}catch(err){toast(err.message)}});
 $('#meterReadingForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/meter-readings',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries()))});const keep=e.target.elements.meter_id.value;e.target.reset();await reloadState();$('#readingMeter').value=keep;setDateDefaults();toast('Odečet uložen')}catch(err){toast(err.message)}});
@@ -169,11 +194,91 @@ function editHeatAllocator(id){const x=STATE.data.heat_allocators.find(v=>v.id==
 function editTariff(id){const x=STATE.data.tariffs.find(v=>v.id===id);if(!x)return;fillForm('#tariffForm',x);openTab('tariffs')}
 function editAdvance(id){const x=STATE.data.advances.find(v=>v.id===id);if(!x)return;fillForm('#advanceForm',x);openTab('advances')}
 
-function ctx(canvas){const c=$(canvas),r=devicePixelRatio||1,w=c.clientWidth||700,h=Number(c.getAttribute('height')||260);c.width=w*r;c.height=h*r;const x=c.getContext('2d');x.scale(r,r);x.clearRect(0,0,w,h);x.font='12px Segoe UI';return {c,x,w,h};}
-function axes(x,w,h,max){x.strokeStyle='#e7ebee';x.fillStyle='#75808a';x.lineWidth=1;for(let i=0;i<5;i++){const y=20+(h-55)*i/4;x.beginPath();x.moveTo(45,y);x.lineTo(w-10,y);x.stroke();const n=max*(1-i/4);x.fillText(nf.format(n),4,y+4)}}
-function drawCostChart(months){const {x,w,h}=ctx('#costChart');const data=months.slice(-8);if(!data.length){x.fillStyle='#88929c';x.fillText('Zatím není co zobrazit.',20,30);return}const max=Math.max(...data.map(m=>m.total_cost),1);axes(x,w,h,max);const bw=(w-65)/data.length*.58;data.forEach((m,i)=>{const cx=55+(w-65)*(i+.5)/data.length,base=h-35;const fixed=m.fixed_cost/max*(h-55),variable=(m.total_cost-m.fixed_cost)/max*(h-55);x.fillStyle='#b8c8c5';x.fillRect(cx-bw/2,base-fixed,bw,fixed);x.fillStyle='#277f72';x.fillRect(cx-bw/2,base-fixed-variable,bw,variable);x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(m.month.slice(5),cx,h-12)});x.textAlign='left'}
-function drawUsageChart(months){const {x,w,h}=ctx('#usageChart');const data=months.slice(-8);if(!data.length){x.fillStyle='#88929c';x.fillText('Zatím není co zobrazit.',20,30);return}const max=Math.max(...data.map(m=>m.measured.electricity),1);axes(x,w,h,max);const bw=(w-65)/data.length*.58;data.forEach((m,i)=>{const cx=55+(w-65)*(i+.5)/data.length,base=h-35;const vals=[Math.max(0,m.passive.electricity),Math.max(0,m.active.electricity),Math.max(0,m.unassigned.electricity)];const cols=['#7aa99f','#2b8074','#c3a25d'];let y=base;vals.forEach((v,j)=>{const hh=v/max*(h-55);y-=hh;x.fillStyle=cols[j];x.fillRect(cx-bw/2,y,bw,hh)});x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(m.month.slice(5),cx,h-12)});x.textAlign='left'}
-function drawWaterfall(b){const {x,w,h}=ctx('#waterfallChart');if(!b.start){x.fillStyle='#88929c';x.fillText('Zatím není co zobrazit.',20,30);return}const values=[b.paid,-Math.max(0,b.actual_cost),b.current_balance],labels=['Zálohy','Náklady','Zůstatek'];const max=Math.max(...values.map(v=>Math.abs(v)),1);const mid=h/2;x.strokeStyle='#dfe5e8';x.beginPath();x.moveTo(35,mid);x.lineTo(w-10,mid);x.stroke();values.forEach((v,i)=>{const cx=80+(w-120)*i/(values.length-1),bw=Math.min(120,(w-120)/4),hh=Math.abs(v)/max*(h*.36);x.fillStyle=v>=0?'#2c8175':'#c56a6a';x.fillRect(cx-bw/2,v>=0?mid-hh:mid,bw,hh);x.fillStyle='#53606b';x.textAlign='center';x.fillText(labels[i],cx,h-18);x.fillText(money(v),cx,v>=0?mid-hh-8:mid+hh+14)});x.textAlign='left'}
+function ctx(canvas){
+  const c=$(canvas),r=Math.max(1,window.devicePixelRatio||1),w=Math.max(280,c.clientWidth||700),h=Number(c.getAttribute('height')||260);
+  c.style.width='100%';c.style.height=\`\${h}px\`;c.width=Math.floor(w*r);c.height=Math.floor(h*r);
+  const x=c.getContext('2d');x.setTransform(r,0,0,r,0,0);x.clearRect(0,0,w,h);x.font='12px Segoe UI';x.textBaseline='alphabetic';
+  return {c,x,w,h};
+}
+function shortText(x,text,maxWidth){
+  text=String(text??'');
+  if(x.measureText(text).width<=maxWidth)return text;
+  let out=text;
+  while(out.length>2&&x.measureText(out+'…').width>maxWidth)out=out.slice(0,-1);
+  return out+'…';
+}
+function chartEmpty(x,msg='Zatím není co zobrazit.'){x.fillStyle='#88929c';x.textAlign='left';x.fillText(msg,20,30)}
+function axes(x,w,h,max,left=58,bottom=38){
+  x.strokeStyle='#e7ebee';x.fillStyle='#75808a';x.lineWidth=1;x.textAlign='right';
+  for(let i=0;i<5;i++){const y=18+(h-bottom-18)*i/4;x.beginPath();x.moveTo(left,y);x.lineTo(w-10,y);x.stroke();const n=max*(1-i/4);x.fillText(nf.format(n),left-8,y+4)}
+  x.textAlign='left';return {left,bottom,plotW:w-left-10,plotH:h-bottom-18,base:h-bottom};
+}
+function monthLabel(m){return String(m||'').slice(2).replace('-','/')}
+function legend(x,items,startX=58,y=14){
+  let px=startX;x.font='11px Segoe UI';
+  for(const item of items){x.fillStyle=item.color;x.fillRect(px,y-8,10,10);px+=14;x.fillStyle='#5e6973';x.textAlign='left';const label=shortText(x,item.label,130);x.fillText(label,px,y);px+=x.measureText(label).width+18}
+}
+function drawCostChart(months){
+  const {x,w,h}=ctx('#costChart'),data=months.slice(-10);if(!data.length)return chartEmpty(x);
+  const max=Math.max(...data.map(m=>m.total_cost),1),g=axes(x,w,h,max),slot=g.plotW/data.length,bw=Math.max(8,slot*.54);
+  legend(x,[{label:'Fixní',color:'#b8c8c5'},{label:'Proměnlivé',color:'#277f72'}]);
+  data.forEach((m,i)=>{const cx=g.left+slot*(i+.5),fixed=m.fixed_cost/max*g.plotH,variable=(m.total_cost-m.fixed_cost)/max*g.plotH;let y=g.base;x.fillStyle='#b8c8c5';x.fillRect(cx-bw/2,y-fixed,bw,fixed);y-=fixed;x.fillStyle='#277f72';x.fillRect(cx-bw/2,y-variable,bw,variable);x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-13)});x.textAlign='left';
+}
+function drawUsageChart(months){
+  const {x,w,h}=ctx('#usageChart'),data=months.slice(-10);if(!data.length)return chartEmpty(x);
+  const max=Math.max(...data.map(m=>m.measured.electricity),1),g=axes(x,w,h,max),slot=g.plotW/data.length,bw=Math.max(8,slot*.54);
+  const items=[{key:'passive',label:'Trvalé spotřebiče',color:'#7aa99f'},{key:'active',label:'Cyklické spotřebiče',color:'#2b8074'},{key:'unassigned',label:'Ostatní používání',color:'#c3a25d'}];
+  legend(x,items);
+  data.forEach((m,i)=>{const cx=g.left+slot*(i+.5);let y=g.base;for(const item of items){const v=Math.max(0,m[item.key].electricity),hh=v/max*g.plotH;y-=hh;x.fillStyle=item.color;x.fillRect(cx-bw/2,y,bw,hh)}x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-13)});x.textAlign='left';
+}
+function drawApplianceChart(m){
+  const {x,w,h}=ctx('#applianceChart');if(!m)return chartEmpty(x);
+  const rows=(m.appliances||[]).map(a=>({name:a.name,value:Number(a.attributed_usage?.electricity??a.usage?.electricity??0)})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
+  rows.push({name:'Ostatní používání',value:Number(m.unassigned?.electricity||0),other:true});
+  const shown=rows.slice(0,8);if(rows.length>8){const rest=rows.slice(8).reduce((s,r)=>s+r.value,0);shown.push({name:'Další spotřebiče',value:rest})}
+  const max=Math.max(...shown.map(r=>r.value),1),left=Math.min(150,Math.max(100,w*.28)),top=26,rowH=Math.min(30,(h-top-18)/Math.max(1,shown.length)),barW=w-left-25;
+  shown.forEach((r,i)=>{const y=top+i*rowH;x.fillStyle='#5f6b75';x.textAlign='right';x.fillText(shortText(x,r.name,left-18),left-10,y+13);x.fillStyle=r.other?'#c3a25d':'#277f72';x.fillRect(left,y,Math.max(2,r.value/max*barW),15);x.fillStyle='#4f5b65';x.textAlign='left';x.fillText(\`\${nf.format(r.value)} kWh\`,Math.min(w-70,left+r.value/max*barW+6),y+13)});x.textAlign='left';
+}
+function drawCashflowChart(months){
+  const {x,w,h}=ctx('#cashflowChart'),data=months.slice(-10);if(!data.length)return chartEmpty(x);
+  const max=Math.max(...data.flatMap(m=>[m.total_cost,m.advance]),1),g=axes(x,w,h,max),slot=g.plotW/data.length,bw=Math.max(5,slot*.27);
+  legend(x,[{label:'Náklady',color:'#277f72'},{label:'Zálohy',color:'#9aa9b2'}]);
+  data.forEach((m,i)=>{const cx=g.left+slot*(i+.5),hc=m.total_cost/max*g.plotH,ha=m.advance/max*g.plotH;x.fillStyle='#277f72';x.fillRect(cx-bw-2,g.base-hc,bw,hc);x.fillStyle='#9aa9b2';x.fillRect(cx+2,g.base-ha,bw,ha);x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-13)});x.textAlign='left';
+}
+function drawBalanceTrendChart(months){
+  const {x,w,h}=ctx('#balanceTrendChart'),data=months.slice(-12);if(!data.length)return chartEmpty(x);
+  let cumulative=0;const points=data.map(m=>({month:m.month,value:(cumulative+=Number(m.balance||0))}));
+  const abs=Math.max(...points.map(p=>Math.abs(p.value)),1),left=58,bottom=38,top=22,plotW=w-left-12,plotH=h-bottom-top,mid=top+plotH/2;
+  x.strokeStyle='#dfe5e8';x.beginPath();x.moveTo(left,mid);x.lineTo(w-12,mid);x.stroke();x.fillStyle='#75808a';x.textAlign='right';x.fillText(money(abs),left-7,top+4);x.fillText('0',left-7,mid+4);x.fillText(money(-abs),left-7,h-bottom+2);
+  x.strokeStyle='#277f72';x.lineWidth=2;x.beginPath();points.forEach((p,i)=>{const px=left+(points.length===1?plotW/2:plotW*i/(points.length-1)),py=mid-(p.value/abs)*(plotH/2);if(i===0)x.moveTo(px,py);else x.lineTo(px,py);x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(p.month),px,h-13)});x.stroke();x.textAlign='left';
+}
+function drawHeatingTrendChart(months){
+  const {x,w,h}=ctx('#heatingTrendChart'),data=months.slice(-12);if(!data.length)return chartEmpty(x);
+  const max=Math.max(...data.map(m=>Number(m.measured?.heat||0)),1),g=axes(x,w,h,max),slot=g.plotW/data.length,bw=Math.max(7,slot*.5);
+  data.forEach((m,i)=>{const v=Number(m.measured?.heat||0),cx=g.left+slot*(i+.5),hh=v/max*g.plotH;x.fillStyle='#8a6f5a';x.fillRect(cx-bw/2,g.base-hh,bw,hh);x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-13)});x.textAlign='left';
+}
+function drawExpenseTreeChart(months,billing){
+  const {x,w,h}=ctx('#expenseTreeChart');if(!billing?.start)return chartEmpty(x);
+  const selected=months.filter(m=>m.month>=billing.start&&m.month<=billing.end),keys=['electricity','cold_water','hot_water','gas','heat'];
+  const rows=keys.map(k=>({name:utilityLabel[k],value:selected.reduce((s,m)=>s+Number(m.utility_costs?.[k]||0),0)})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
+  const total=rows.reduce((s,r)=>s+r.value,0);if(total<=0)return chartEmpty(x);
+  const colors=['#277f72','#5f9a91','#87aaa4','#a9956c','#8a6f5a'];let px=0;
+  rows.forEach((r,i)=>{const ww=i===rows.length-1?w-px:Math.round(w*r.value/total);x.fillStyle=colors[i%colors.length];x.fillRect(px,0,ww,h);if(ww>76){x.fillStyle='#fff';x.textAlign='left';x.font='700 13px Segoe UI';x.fillText(shortText(x,r.name,ww-18),px+9,24);x.font='12px Segoe UI';x.fillText(shortText(x,money(r.value),ww-18),px+9,44);x.fillText(\`\${Math.round(r.value/total*100)} %\`,px+9,62)}px+=ww});x.textAlign='left';x.font='12px Segoe UI';
+}
+function drawWaterfall(b){
+  const {x,w,h}=ctx('#waterfallChart');if(!b.start)return chartEmpty(x);
+  const values=[b.paid,-Math.max(0,b.actual_cost),b.current_balance],labels=['Zálohy','Náklady','Zůstatek'],max=Math.max(...values.map(v=>Math.abs(v)),1),mid=h/2;
+  x.strokeStyle='#dfe5e8';x.beginPath();x.moveTo(45,mid);x.lineTo(w-10,mid);x.stroke();
+  values.forEach((v,i)=>{const cx=80+(w-150)*i/(values.length-1),bw=Math.min(110,(w-130)/4),hh=Math.abs(v)/max*(h*.34);x.fillStyle=v>=0?'#2c8175':'#c56a6a';x.fillRect(cx-bw/2,v>=0?mid-hh:mid,bw,hh);x.fillStyle='#53606b';x.textAlign='center';x.fillText(shortText(x,labels[i],bw+20),cx,h-18);x.fillText(shortText(x,money(v),bw+32),cx,v>=0?mid-hh-8:mid+hh+14)});x.textAlign='left';
+}
+
+async function connectionCheck(){
+  try{await api('/health');if(document.visibilityState==='visible'&&STATE===null)await reloadState()}catch(_){}
+}
+window.setInterval(connectionCheck,30000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reloadState().catch(()=>{})});
+window.addEventListener('focus',()=>connectionCheck());
+document.addEventListener('app-language-change',()=>STATE&&renderDashboard());
 
 window.addEventListener('resize',()=>STATE&&renderDashboard());
 renderKindFields(); setDateDefaults();
