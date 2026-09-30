@@ -195,10 +195,26 @@ function editTariff(id){const x=STATE.data.tariffs.find(v=>v.id===id);if(!x)retu
 function editAdvance(id){const x=STATE.data.advances.find(v=>v.id===id);if(!x)return;fillForm('#advanceForm',x);openTab('advances')}
 
 function ctx(canvas){
-  const c=$(canvas),r=Math.max(1,window.devicePixelRatio||1),w=Math.max(280,c.clientWidth||700),h=Number(c.getAttribute('height')||260);
-  c.style.width='100%';c.style.height=`${h}px`;c.width=Math.floor(w*r);c.height=Math.floor(h*r);
-  const x=c.getContext('2d');x.setTransform(r,0,0,r,0,0);x.clearRect(0,0,w,h);x.font='13px Segoe UI';x.textBaseline='alphabetic';
-  return {c,x,w,h};
+  const c=$(canvas);
+  const rect=c.getBoundingClientRect();
+  const w=Math.max(320,Math.round(rect.width||c.parentElement?.clientWidth||700));
+  const h=Number(c.getAttribute('height')||280);
+  const dpr=Math.min(2.5,Math.max(1,window.devicePixelRatio||1));
+
+  c.style.display='block';
+  c.style.width='100%';
+  c.style.height=`${h}px`;
+  c.width=Math.round(w*dpr);
+  c.height=Math.round(h*dpr);
+
+  const x=c.getContext('2d');
+  x.setTransform(dpr,0,0,dpr,0,0);
+  x.clearRect(0,0,w,h);
+  x.imageSmoothingEnabled=true;
+  if('textRendering' in x)x.textRendering='optimizeLegibility';
+  x.textBaseline='middle';
+  x.font='500 14px "Segoe UI", Arial, sans-serif';
+  return {c,x,w,h,dpr};
 }
 function shortText(x,text,maxWidth){
   text=String(text??'');
@@ -208,72 +224,116 @@ function shortText(x,text,maxWidth){
   return out+'…';
 }
 function chartEmpty(x,msg='Zatím není co zobrazit.'){
-  x.fillStyle='#75808a';
+  const rect=x.canvas.getBoundingClientRect();
+  x.save();
+  x.fillStyle='#6d7885';
   x.textAlign='center';
-  x.font='13px Segoe UI';
-  x.fillText(msg,x.canvas.width/(2*(window.devicePixelRatio||1)),46);
-  x.textAlign='left';
+  x.textBaseline='middle';
+  x.font='500 14px "Segoe UI", Arial, sans-serif';
+  x.fillText(msg,rect.width/2,54);
+  x.restore();
 }
-function axes(x,w,h,max,left=68,bottom=40,formatter=v=>nf.format(v)){
-  x.strokeStyle='#e7ebee';x.fillStyle='#75808a';x.lineWidth=1;x.textAlign='right';x.font='12px Segoe UI';
+function axes(x,w,h,max,left=88,bottom=44,formatter=v=>nf.format(v)){
+  const top=34;
+  const plotH=h-bottom-top;
+  x.save();
+  x.strokeStyle='#e3e8eb';
+  x.fillStyle='#687580';
+  x.lineWidth=1;
+  x.textAlign='right';
+  x.textBaseline='middle';
+  x.font='600 13px "Segoe UI", Arial, sans-serif';
+
   for(let i=0;i<5;i++){
-    const y=22+(h-bottom-22)*i/4;
-    x.beginPath();x.moveTo(left,y);x.lineTo(w-10,y);x.stroke();
-    const n=max*(1-i/4);x.fillText(formatter(n),left-9,y+4);
+    const y=top+plotH*i/4;
+    x.beginPath();x.moveTo(left,y);x.lineTo(w-14,y);x.stroke();
+    x.fillText(formatter(max*(1-i/4)),left-10,y);
   }
-  x.textAlign='left';
-  return {left,bottom,plotW:w-left-10,plotH:h-bottom-22,base:h-bottom};
+
+  x.restore();
+  return {left,bottom,top,plotW:w-left-14,plotH,base:h-bottom};
 }
 function monthLabel(m){return String(m||'').slice(2).replace('-','/')}
-function legend(x,items,startX=68,y=16){
-  let px=startX;x.font='12px Segoe UI';
+function legend(x,items,startX=88,y=17){
+  x.save();
+  let px=startX;
+  x.font='600 13px "Segoe UI", Arial, sans-serif';
+  x.textBaseline='middle';
   for(const item of items){
-    x.fillStyle=item.color;x.fillRect(px,y-9,11,11);px+=15;
-    x.fillStyle='#5e6973';x.textAlign='left';
-    const label=shortText(x,item.label,150);x.fillText(label,px,y);
-    px+=x.measureText(label).width+20;
+    x.fillStyle=item.color;
+    x.fillRect(px,y-6,12,12);
+    px+=17;
+    x.fillStyle='#5f6b75';
+    x.textAlign='left';
+    const label=shortText(x,item.label,155);
+    x.fillText(label,px,y);
+    px+=x.measureText(label).width+22;
   }
+  x.restore();
 }
 function drawCostChart(months){
-  const {x,w,h}=ctx('#costChart'),data=months.slice(-10);if(!data.length)return chartEmpty(x);
+  const {x,w,h}=ctx('#costChart'),data=months.slice(-10);
+  if(!data.length)return chartEmpty(x);
+
   const max=Math.max(...data.map(m=>Number(m.total_cost||0)),1);
-  const g=axes(x,w,h,max,76,40,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
-  const slot=g.plotW/data.length,bw=Math.max(8,slot*.54);
-  legend(x,[{label:'Fixní',color:'#b8c8c5'},{label:'Proměnlivé',color:'#277f72'}],76);
+  const g=axes(x,w,h,max,92,46,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
+  const slot=g.plotW/data.length,bw=Math.max(10,slot*.54);
+
+  legend(x,[{label:'Fixní',color:'#b8c8c5'},{label:'Proměnlivé',color:'#277f72'}],92);
+
+  x.save();
+  x.font='600 13px "Segoe UI", Arial, sans-serif';
+  x.textBaseline='middle';
   data.forEach((m,i)=>{
-    const cx=g.left+slot*(i+.5),fixed=Number(m.fixed_cost||0)/max*g.plotH,variable=Math.max(0,Number(m.total_cost||0)-Number(m.fixed_cost||0))/max*g.plotH;
+    const cx=g.left+slot*(i+.5);
+    const fixed=Number(m.fixed_cost||0)/max*g.plotH;
+    const variable=Math.max(0,Number(m.total_cost||0)-Number(m.fixed_cost||0))/max*g.plotH;
     let y=g.base;
     x.fillStyle='#b8c8c5';x.fillRect(cx-bw/2,y-fixed,bw,fixed);y-=fixed;
     x.fillStyle='#277f72';x.fillRect(cx-bw/2,y-variable,bw,variable);
-    x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-13);
+    x.fillStyle='#65717b';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-17);
   });
-  x.textAlign='left';
+  x.restore();
 }
 function drawUsageChart(months){
-  const {x,w,h}=ctx('#usageChart'),data=months.slice(-10);if(!data.length)return chartEmpty(x);
+  const {x,w,h}=ctx('#usageChart'),data=months.slice(-10);
+  if(!data.length)return chartEmpty(x);
+
   const measuredMax=Math.max(...data.map(m=>Number(m.measured?.electricity||0)));
-  if(measuredMax<=0){
-    return chartEmpty(x,'Zatím není naměřená spotřeba elektřiny — profily spotřebičů se k odečtu nepřičítají.');
-  }
-  const max=measuredMax,g=axes(x,w,h,max,68,40,v=>`${nf.format(v)} kWh`),slot=g.plotW/data.length,bw=Math.max(8,slot*.54);
+  if(measuredMax<=0)return chartEmpty(x,'Zatím není naměřená spotřeba elektřiny.');
+
+  const g=axes(x,w,h,measuredMax,88,46,v=>`${nf.format(v)} kWh`);
+  const slot=g.plotW/data.length,bw=Math.max(10,slot*.54);
   const items=[
     {key:'passive',label:'Trvalé spotřebiče',color:'#7aa99f'},
     {key:'active',label:'Cyklické spotřebiče',color:'#2b8074'},
     {key:'unassigned',label:'Ostatní používání',color:'#c3a25d'}
   ];
-  legend(x,items,68);
+
+  legend(x,items,88);
+
+  x.save();
+  x.font='600 13px "Segoe UI", Arial, sans-serif';
+  x.textBaseline='middle';
   data.forEach((m,i)=>{
     const cx=g.left+slot*(i+.5);let y=g.base;
     for(const item of items){
-      const v=Math.max(0,Number(m[item.key]?.electricity||0)),hh=v/max*g.plotH;
-      y-=hh;x.fillStyle=item.color;x.fillRect(cx-bw/2,y,bw,hh);
+      const v=Math.max(0,Number(m[item.key]?.electricity||0));
+      const hh=v/measuredMax*g.plotH;
+      y-=hh;
+      x.fillStyle=item.color;
+      x.fillRect(cx-bw/2,y,bw,hh);
     }
-    x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-13);
+    x.fillStyle='#65717b';
+    x.textAlign='center';
+    x.fillText(monthLabel(m.month),cx,h-17);
   });
-  x.textAlign='left';
+  x.restore();
 }
 function drawApplianceChart(m){
-  const {x,w,h}=ctx('#applianceChart');if(!m)return chartEmpty(x);
+  const {x,w,h}=ctx('#applianceChart');
+  if(!m)return chartEmpty(x);
+
   const measured=Number(m.measured?.electricity||0);
   const useEstimate=measured<=0;
   let rows=(m.appliances||[]).map(a=>({
@@ -286,122 +346,245 @@ function drawApplianceChart(m){
     if(other>0)rows.push({name:'Ostatní používání',value:other,other:true});
   }
 
-  if(!rows.length)return chartEmpty(x,useEstimate?'Spotřebiče mají nulový odhad pro tento měsíc.':'Žádná část odečtu není přiřazena spotřebičům.');
+  if(!rows.length)return chartEmpty(x,'Pro tento měsíc zatím není co zobrazit.');
 
   const shown=rows.slice(0,8);
-  if(rows.length>8)shown.push({name:'Další spotřebiče',value:rows.slice(8).reduce((s,r)=>s+r.value,0)});
-  const max=Math.max(...shown.map(r=>r.value),1),left=Math.min(180,Math.max(120,w*.30)),top=useEstimate?48:28,rowH=Math.min(34,(h-top-22)/Math.max(1,shown.length)),barW=w-left-36;
+  const max=Math.max(...shown.map(r=>r.value),1);
+  const left=Math.min(210,Math.max(145,w*.29));
+  const top=useEstimate?66:34;
+  const rowH=Math.max(32,Math.min(40,(h-top-24)/shown.length));
+  const barW=Math.max(100,w-left-115);
+
+  x.save();
+  x.textBaseline='middle';
 
   if(useEstimate){
-    x.fillStyle='#7a858e';x.font='12px Segoe UI';x.textAlign='left';
-    x.fillText('Odhad profilu bez odečtu elektroměru — nepřičítá se ke spotřebě.',left,24);
+    x.fillStyle='#6d7885';
+    x.font='500 14px "Segoe UI", Arial, sans-serif';
+    x.textAlign='center';
+    x.fillText(shortText(x,'Odhad profilu bez odečtu elektroměru — nepřičítá se ke spotřebě.',w-48),w/2,28);
   }
 
   shown.forEach((r,i)=>{
     const y=top+i*rowH;
-    x.fillStyle='#5f6b75';x.textAlign='right';x.font='13px Segoe UI';x.fillText(shortText(x,r.name,left-22),left-12,y+14);
+    x.font='600 14px "Segoe UI", Arial, sans-serif';
+    x.fillStyle='#56636e';
+    x.textAlign='right';
+    x.fillText(shortText(x,r.name,left-28),left-14,y+10);
+
+    const width=Math.max(5,r.value/max*barW);
     x.fillStyle=r.other?'#c3a25d':(useEstimate?'#8fb4ad':'#277f72');
-    const width=Math.max(3,r.value/max*barW);x.fillRect(left,y,width,17);
-    x.fillStyle='#4f5b65';x.textAlign='left';x.fillText(`${nf.format(r.value)} kWh`,Math.min(w-78,left+width+8),y+14);
+    x.fillRect(left,y,width,20);
+
+    const valueText=`${nf.format(r.value)} kWh`;
+    x.font='600 13px "Segoe UI", Arial, sans-serif';
+    const tw=x.measureText(valueText).width;
+    if(left+width+10+tw<w-10){
+      x.fillStyle='#4f5b65';
+      x.textAlign='left';
+      x.fillText(valueText,left+width+10,y+10);
+    }else{
+      x.fillStyle='#ffffff';
+      x.textAlign='right';
+      x.fillText(valueText,left+width-7,y+10);
+    }
   });
-  x.textAlign='left';
+
+  x.restore();
 }
 function drawCashflowChart(months){
-  const {x,w,h}=ctx('#cashflowChart'),data=months.slice(-10);if(!data.length)return chartEmpty(x);
+  const {x,w,h}=ctx('#cashflowChart'),data=months.slice(-10);
+  if(!data.length)return chartEmpty(x);
+
   const max=Math.max(...data.flatMap(m=>[Number(m.total_cost||0),Number(m.advance||0)]),1);
-  const g=axes(x,w,h,max,76,40,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`),slot=g.plotW/data.length,bw=Math.max(5,slot*.27);
-  legend(x,[{label:'Náklady',color:'#277f72'},{label:'Zálohy',color:'#9aa9b2'}],76);
+  const g=axes(x,w,h,max,92,46,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
+  const slot=g.plotW/data.length,bw=Math.max(7,slot*.27);
+
+  legend(x,[{label:'Náklady',color:'#277f72'},{label:'Zálohy',color:'#9aa9b2'}],92);
+
+  x.save();
+  x.font='600 13px "Segoe UI", Arial, sans-serif';
+  x.textBaseline='middle';
   data.forEach((m,i)=>{
-    const cx=g.left+slot*(i+.5),hc=Number(m.total_cost||0)/max*g.plotH,ha=Number(m.advance||0)/max*g.plotH;
-    x.fillStyle='#277f72';x.fillRect(cx-bw-2,g.base-hc,bw,hc);
-    x.fillStyle='#9aa9b2';x.fillRect(cx+2,g.base-ha,bw,ha);
-    x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-13);
+    const cx=g.left+slot*(i+.5);
+    const hc=Number(m.total_cost||0)/max*g.plotH;
+    const ha=Number(m.advance||0)/max*g.plotH;
+    x.fillStyle='#277f72';x.fillRect(cx-bw-3,g.base-hc,bw,hc);
+    x.fillStyle='#9aa9b2';x.fillRect(cx+3,g.base-ha,bw,ha);
+    x.fillStyle='#65717b';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-17);
   });
-  x.textAlign='left';
+  x.restore();
 }
 function drawBalanceTrendChart(months){
-  const {x,w,h}=ctx('#balanceTrendChart'),data=months.slice(-12);if(!data.length)return chartEmpty(x);
+  const {x,w,h}=ctx('#balanceTrendChart'),data=months.slice(-12);
+  if(!data.length)return chartEmpty(x);
+
   let cumulative=0;
   const points=data.map(m=>({month:m.month,value:(cumulative+=Number(m.balance||0))}));
-  const min=Math.min(0,...points.map(p=>p.value)),max=Math.max(0,...points.map(p=>p.value));
-  const span=Math.max(1,max-min),left=76,bottom=40,top=24,plotW=w-left-14,plotH=h-bottom-top;
-  const yFor=v=>top+(max-v)/span*plotH;
+  const min=Math.min(0,...points.map(p=>p.value));
+  const max=Math.max(0,...points.map(p=>p.value));
+  const rawSpan=Math.max(1,max-min);
+  const pad=Math.max(100,rawSpan*.08);
+  const lo=min-pad,hi=max+pad,span=hi-lo;
+  const left=96,bottom=46,top=34,plotW=w-left-18,plotH=h-bottom-top;
+  const yFor=v=>top+(hi-v)/span*plotH;
 
-  x.strokeStyle='#e7ebee';x.lineWidth=1;
+  x.save();
+  x.font='600 13px "Segoe UI", Arial, sans-serif';
+  x.textBaseline='middle';
+
   for(let i=0;i<5;i++){
-    const value=max-span*i/4,y=yFor(value);
-    x.beginPath();x.moveTo(left,y);x.lineTo(w-12,y);x.stroke();
-    x.fillStyle='#75808a';x.textAlign='right';x.fillText(`${Math.round(value).toLocaleString('cs-CZ')} Kč`,left-9,y+4);
+    const value=hi-span*i/4,y=yFor(value);
+    x.strokeStyle='#e3e8eb';x.lineWidth=1;
+    x.beginPath();x.moveTo(left,y);x.lineTo(w-14,y);x.stroke();
+    x.fillStyle='#687580';x.textAlign='right';
+    x.fillText(`${Math.round(value).toLocaleString('cs-CZ')} Kč`,left-10,y);
   }
-  const zeroY=yFor(0);x.strokeStyle='#cfd7db';x.beginPath();x.moveTo(left,zeroY);x.lineTo(w-12,zeroY);x.stroke();
 
-  x.strokeStyle='#277f72';x.fillStyle='#277f72';x.lineWidth=2;x.beginPath();
+  const zeroY=yFor(0);
+  x.strokeStyle='#cbd4d9';
+  x.beginPath();x.moveTo(left,zeroY);x.lineTo(w-14,zeroY);x.stroke();
+
+  x.strokeStyle='#277f72';x.lineWidth=2.5;
+  x.beginPath();
   points.forEach((p,i)=>{
-    const px=left+(points.length===1?plotW/2:plotW*i/(points.length-1)),py=yFor(p.value);
+    const px=left+(points.length===1?plotW/2:plotW*i/(points.length-1));
+    const py=yFor(p.value);
     if(i===0)x.moveTo(px,py);else x.lineTo(px,py);
   });
   if(points.length>1)x.stroke();
 
   points.forEach((p,i)=>{
-    const px=left+(points.length===1?plotW/2:plotW*i/(points.length-1)),py=yFor(p.value);
-    x.beginPath();x.arc(px,py,4,0,Math.PI*2);x.fill();
-    x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(p.month),px,h-13);
-    x.fillStyle='#277f72';x.fillText(money(p.value),px,Math.max(top+12,py-10));
+    const px=left+(points.length===1?plotW/2:plotW*i/(points.length-1));
+    const py=yFor(p.value);
+
+    x.fillStyle='#277f72';
+    x.beginPath();x.arc(px,py,5,0,Math.PI*2);x.fill();
+
+    x.font='600 13px "Segoe UI", Arial, sans-serif';
+    x.textAlign='center';x.textBaseline='middle';
+    x.fillStyle='#65717b';
+    x.fillText(monthLabel(p.month),px,h-17);
+
+    x.font='700 14px "Segoe UI", Arial, sans-serif';
+    x.fillStyle='#277f72';
+    x.fillText(money(p.value),px,Math.max(top+12,py-17));
   });
-  x.textAlign='left';
+
+  x.restore();
 }
 function drawHeatingTrendChart(months){
-  const {x,w,h}=ctx('#heatingTrendChart'),data=months.slice(-12);if(!data.length)return chartEmpty(x);
-  const actualMax=Math.max(...data.map(m=>Number(m.measured?.heat||0)));
-  if(actualMax<=0)return chartEmpty(x,'Zatím nejsou odečty spotřeby tepla.');
-  const max=actualMax,g=axes(x,w,h,max,68,40,v=>`${nf.format(v)} jedn.`),slot=g.plotW/data.length,bw=Math.max(7,slot*.5);
+  const {x,w,h}=ctx('#heatingTrendChart'),data=months.slice(-12);
+  if(!data.length)return chartEmpty(x);
+
+  const max=Math.max(...data.map(m=>Number(m.measured?.heat||0)));
+  if(max<=0)return chartEmpty(x,'Zatím nejsou odečty spotřeby tepla.');
+
+  const g=axes(x,w,h,max,88,46,v=>`${nf.format(v)} jedn.`);
+  const slot=g.plotW/data.length,bw=Math.max(9,slot*.5);
+
+  x.save();
+  x.font='600 13px "Segoe UI", Arial, sans-serif';
+  x.textBaseline='middle';
   data.forEach((m,i)=>{
-    const v=Number(m.measured?.heat||0),cx=g.left+slot*(i+.5),hh=v/max*g.plotH;
+    const v=Number(m.measured?.heat||0);
+    const cx=g.left+slot*(i+.5),hh=v/max*g.plotH;
     x.fillStyle='#8a6f5a';x.fillRect(cx-bw/2,g.base-hh,bw,hh);
-    x.fillStyle='#6f7a84';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-13);
+    x.fillStyle='#65717b';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-17);
   });
-  x.textAlign='left';
+  x.restore();
 }
 function drawExpenseTreeChart(months,billing){
-  const {x,w,h}=ctx('#expenseTreeChart');if(!billing?.start)return chartEmpty(x);
-  const selected=months.filter(m=>m.month>=billing.start&&m.month<=billing.end),keys=['electricity','cold_water','hot_water','gas','heat'];
-  const rows=keys.map(k=>({name:utilityLabel[k],value:selected.reduce((s,m)=>s+Number(m.utility_costs?.[k]||0),0)})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
-  const total=rows.reduce((s,r)=>s+r.value,0);if(total<=0)return chartEmpty(x);
-  const colors=['#277f72','#5f9a91','#87aaa4','#a9956c','#8a6f5a'];let px=0;
-  rows.forEach((r,i)=>{const ww=i===rows.length-1?w-px:Math.round(w*r.value/total);x.fillStyle=colors[i%colors.length];x.fillRect(px,0,ww,h);if(ww>76){x.fillStyle='#fff';x.textAlign='left';x.font='700 13px Segoe UI';x.fillText(shortText(x,r.name,ww-18),px+9,24);x.font='12px Segoe UI';x.fillText(shortText(x,money(r.value),ww-18),px+9,44);x.fillText(`${Math.round(r.value/total*100)} %`,px+9,62)}px+=ww});x.textAlign='left';x.font='12px Segoe UI';
+  const {x,w,h}=ctx('#expenseTreeChart');
+  if(!billing?.start)return chartEmpty(x);
+
+  const selected=months.filter(m=>m.month>=billing.start&&m.month<=billing.end);
+  const keys=['electricity','cold_water','hot_water','gas','heat'];
+  const rows=keys.map(k=>({
+    name:utilityLabel[k],
+    value:selected.reduce((s,m)=>s+Number(m.utility_costs?.[k]||0),0)
+  })).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
+
+  const total=rows.reduce((s,r)=>s+r.value,0);
+  if(total<=0)return chartEmpty(x);
+
+  const colors=['#277f72','#5f9a91','#87aaa4','#a9956c','#8a6f5a'];
+  let px=0;
+
+  x.save();
+  x.textBaseline='top';
+
+  rows.forEach((r,i)=>{
+    const ww=i===rows.length-1?w-px:Math.round(w*r.value/total);
+    x.fillStyle=colors[i%colors.length];
+    x.fillRect(px,0,ww,h);
+
+    const pct=Math.round(r.value/total*100);
+    const pad=14;
+    const usable=ww-pad*2;
+
+    if(usable>=115){
+      x.fillStyle='#fff';
+      x.textAlign='left';
+      x.font='700 15px "Segoe UI", Arial, sans-serif';
+      x.fillText(shortText(x,r.name,usable),px+pad,14);
+      x.font='600 13px "Segoe UI", Arial, sans-serif';
+      x.fillText(shortText(x,money(r.value),usable),px+pad,40);
+      x.fillText(`${pct} %`,px+pad,62);
+    }else if(usable>=65){
+      x.fillStyle='#fff';
+      x.textAlign='center';
+      x.font='700 13px "Segoe UI", Arial, sans-serif';
+      x.fillText(shortText(x,r.name,usable),px+ww/2,16);
+      x.font='600 12px "Segoe UI", Arial, sans-serif';
+      x.fillText(`${pct} %`,px+ww/2,40);
+    }
+
+    px+=ww;
+  });
+
+  x.restore();
 }
 function drawWaterfall(b){
-  const {x,w,h}=ctx('#waterfallChart');if(!b.start)return chartEmpty(x);
+  const {x,w,h}=ctx('#waterfallChart');
+  if(!b.start)return chartEmpty(x);
+
   const paid=Number(b.paid||0),cost=Number(b.actual_cost||0),balance=Number(b.current_balance||0);
   const min=Math.min(0,balance),max=Math.max(1,paid,balance),span=max-min;
-  const left=74,right=24,top=24,bottom=44,plotW=w-left-right,plotH=h-top-bottom,yFor=v=>top+(max-v)/span*plotH;
+  const left=96,right=28,top=36,bottom=50,plotW=w-left-right,plotH=h-top-bottom;
+  const yFor=v=>top+(max-v)/span*plotH;
 
-  x.strokeStyle='#e7ebee';x.lineWidth=1;
+  x.save();
+  x.font='600 13px "Segoe UI", Arial, sans-serif';
+  x.textBaseline='middle';
+
   for(let i=0;i<5;i++){
     const value=max-span*i/4,y=yFor(value);
+    x.strokeStyle='#e3e8eb';
     x.beginPath();x.moveTo(left,y);x.lineTo(w-right,y);x.stroke();
-    x.fillStyle='#75808a';x.textAlign='right';x.fillText(`${Math.round(value).toLocaleString('cs-CZ')} Kč`,left-9,y+4);
+    x.fillStyle='#687580';x.textAlign='right';
+    x.fillText(`${Math.round(value).toLocaleString('cs-CZ')} Kč`,left-10,y);
   }
 
-  const centers=[left+plotW*.18,left+plotW*.5,left+plotW*.82],bw=Math.min(150,plotW*.18);
+  const centers=[left+plotW*.18,left+plotW*.5,left+plotW*.82];
+  const bw=Math.min(150,plotW*.18);
   const zeroY=yFor(0),paidY=yFor(paid),balanceY=yFor(balance);
 
   x.fillStyle='#2c8175';x.fillRect(centers[0]-bw/2,paidY,bw,zeroY-paidY);
   x.fillStyle='#c56a6a';x.fillRect(centers[1]-bw/2,Math.min(paidY,balanceY),bw,Math.abs(balanceY-paidY));
   x.fillStyle=balance>=0?'#2c8175':'#c56a6a';x.fillRect(centers[2]-bw/2,Math.min(zeroY,balanceY),bw,Math.abs(balanceY-zeroY));
 
-  x.strokeStyle='#aeb8be';x.setLineDash([4,4]);
-  x.beginPath();x.moveTo(centers[0]+bw/2,paidY);x.lineTo(centers[1]-bw/2,paidY);x.stroke();
-  x.beginPath();x.moveTo(centers[1]+bw/2,balanceY);x.lineTo(centers[2]-bw/2,balanceY);x.stroke();
-  x.setLineDash([]);
-
   const labels=[['Zálohy',paid,paidY],['Náklady',-cost,balanceY],['Zůstatek',balance,balanceY]];
   labels.forEach((item,i)=>{
-    x.fillStyle='#53606b';x.textAlign='center';x.fillText(item[0],centers[i],h-16);
-    const labelY=i===0?paidY-9:(i===1?Math.min(paidY,balanceY)-9:Math.min(zeroY,balanceY)-9);
-    x.fillText(money(item[1]),centers[i],Math.max(top+12,labelY));
+    x.fillStyle='#53606b';x.textAlign='center';
+    x.font='700 14px "Segoe UI", Arial, sans-serif';
+    x.fillText(item[0],centers[i],h-19);
+    x.font='700 13px "Segoe UI", Arial, sans-serif';
+    const labelY=i===0?paidY-14:(i===1?Math.min(paidY,balanceY)-14:Math.min(zeroY,balanceY)-14);
+    x.fillText(money(item[1]),centers[i],Math.max(top+10,labelY));
   });
-  x.textAlign='left';
+
+  x.restore();
 }
 
 async function connectionCheck(){

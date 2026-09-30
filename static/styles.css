@@ -212,7 +212,7 @@ button,input,select{font:inherit}
 /* Analytics expansion: keep the existing flat visual language while making
    canvases resilient to long labels and narrow windows. */
 .chart-card{min-width:0;overflow:hidden}
-.chart-card canvas{display:block;width:100%!important;max-width:100%;min-width:0}
+.chart-card canvas{display:block;width:100%!important;max-width:100%;min-width:0;image-rendering:auto}
 .alert{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .alert>span{min-width:0;overflow-wrap:anywhere}
 .alert-action{flex:0 0 auto;white-space:nowrap}
