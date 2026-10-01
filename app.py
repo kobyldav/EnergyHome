@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import mimetypes
 import os
@@ -28,6 +29,21 @@ RUNTIME_SLEEP_GAP = 10.0
 RUNTIME_STARTUP_TIMEOUT = 30.0
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def frontend_build_id() -> str:
+    digest = hashlib.sha256()
+    for rel in ("templates/index.html", "static/app.js", "static/styles.css", "static/i18n.js"):
+        path = BASE_DIR / rel
+        digest.update(rel.encode("utf-8"))
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            digest.update(b":missing")
+    return digest.hexdigest()[:16]
+
+
+BUILD_ID = frontend_build_id()
 
 
 def get_user_data_dir() -> Path:
@@ -459,6 +475,7 @@ def write_runtime_file(host: str, port: int) -> None:
         "host": host,
         "port": port,
         "pid": os.getpid(),
+        "build_id": BUILD_ID,
     }
     temp = RUNTIME_FILE.with_suffix(".tmp")
     temp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -489,7 +506,11 @@ def find_running_instance() -> str | None:
         url = f"http://{host}:{port}"
         with urlopen(f"{url}/health", timeout=0.8) as response:
             health = json.loads(response.read().decode("utf-8"))
-        if health.get("ok") and health.get("app") == "EnergyHome":
+        if (
+            health.get("ok")
+            and health.get("app") == "EnergyHome"
+            and health.get("build_id") == BUILD_ID
+        ):
             return url
     except Exception:
         try:
@@ -621,6 +642,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True,
                 "app": "EnergyHome",
                 "version": APP_VERSION,
+                "build_id": BUILD_ID,
                 "data_file": str(DATA_FILE),
                 "data_exists": DATA_FILE.is_file(),
             })
