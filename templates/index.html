@@ -96,6 +96,48 @@
         <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">BILANCE</p><h2>Vývoj přeplatku / nedoplatku</h2></div></div><canvas id="balanceTrendChart" height="280"></canvas></article>
         <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">TOPENÍ</p><h2>Vývoj spotřeby tepla</h2></div></div><canvas id="heatingTrendChart" height="280"></canvas></article>
       </div>
+      <article class="card svg-analytics-card">
+        <div class="card-head svg-analytics-head">
+          <div><p class="eyebrow">DETAIL MÉDIÍ</p><h2>Samostatný vývoj spotřeby</h2></div>
+          <div class="analytics-range" role="group" aria-label="Období grafů">
+            <button class="btn secondary small analytics-range-btn active" type="button" data-analytics-range="billing">Zúčtovací období</button>
+            <button class="btn secondary small analytics-range-btn" type="button" data-analytics-range="12m">Posledních 12 měsíců</button>
+          </div>
+        </div>
+        <div class="media-svg-grid">
+          <section class="media-svg-panel" data-utility-panel="electricity">
+            <div class="media-svg-head"><div><span class="media-dot media-electricity"></span><h3>Elektřina</h3><small>kWh</small></div><div id="mediaStat-electricity" class="media-svg-stats"></div></div>
+            <svg id="mediaChart-electricity" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby elektřiny"></svg>
+          </section>
+          <section class="media-svg-panel" data-utility-panel="cold_water">
+            <div class="media-svg-head"><div><span class="media-dot media-cold_water"></span><h3>Studená voda</h3><small>m³</small></div><div id="mediaStat-cold_water" class="media-svg-stats"></div></div>
+            <svg id="mediaChart-cold_water" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby studené vody"></svg>
+          </section>
+          <section class="media-svg-panel" data-utility-panel="hot_water">
+            <div class="media-svg-head"><div><span class="media-dot media-hot_water"></span><h3>Teplá voda</h3><small>m³</small></div><div id="mediaStat-hot_water" class="media-svg-stats"></div></div>
+            <svg id="mediaChart-hot_water" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby teplé vody"></svg>
+          </section>
+          <section class="media-svg-panel" data-utility-panel="gas">
+            <div class="media-svg-head"><div><span class="media-dot media-gas"></span><h3>Plyn</h3><small>m³</small></div><div id="mediaStat-gas" class="media-svg-stats"></div></div>
+            <svg id="mediaChart-gas" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby plynu"></svg>
+          </section>
+          <section class="media-svg-panel media-svg-panel-wide" data-utility-panel="heat">
+            <div class="media-svg-head"><div><span class="media-dot media-heat"></span><h3>Teplo</h3><small>provizorní jednotky</small></div><div id="mediaStat-heat" class="media-svg-stats"></div></div>
+            <svg id="mediaChart-heat" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby tepla"></svg>
+          </section>
+        </div>
+      </article>
+
+      <article class="card svg-analytics-card sankey-card">
+        <div class="card-head">
+          <div><p class="eyebrow">TOK NÁKLADŮ</p><h2>Sankey nákladů</h2></div>
+          <div id="sankeySummary" class="sankey-summary"></div>
+        </div>
+        <div class="sankey-wrap">
+          <svg id="costSankey" class="svg-chart sankey-svg" viewBox="0 0 960 460" role="img" aria-label="Sankey diagram toku nákladů"></svg>
+        </div>
+      </article>
+
       <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">VÝDAJE</p><h2>Struktura výdajů podle médií</h2></div></div><canvas id="expenseTreeChart" height="260"></canvas></article>
       <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">ZÚČTOVÁNÍ</p><h2>Vodopádový přehled</h2></div></div><canvas id="waterfallChart" height="260"></canvas></article>
     </section>

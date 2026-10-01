@@ -217,3 +217,61 @@ button,input,select{font:inherit}
 .alert>span{min-width:0;overflow-wrap:anywhere}
 .alert-action{flex:0 0 auto;white-space:nowrap}
 @media(max-width:650px){.alert{display:block}.alert-action{margin-top:10px}}
+
+
+/* =========================================================
+   SVG MEDIA ANALYTICS + SANKEY
+   ========================================================= */
+.svg-analytics-card{overflow:hidden}
+.svg-analytics-head{align-items:center}
+.analytics-range{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.analytics-range-btn.active{background:var(--primary);border-color:var(--primary);color:#fff}
+
+.media-svg-grid{display:grid;grid-template-columns:1fr 1fr;margin:0 -22px -22px;border-top:1px solid var(--line)}
+.media-svg-panel{min-width:0;padding:17px 18px 12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:#fff}
+.media-svg-panel:nth-child(even){border-right:0}
+.media-svg-panel-wide{grid-column:1/-1;border-right:0}
+.media-svg-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px}
+.media-svg-head>div:first-child{display:flex;align-items:center;gap:8px;min-width:0}
+.media-svg-head h3{font-size:14px;margin:0}
+.media-svg-head small{font-size:11px;color:var(--muted);white-space:nowrap}
+.media-dot{width:8px;height:8px;display:inline-block;flex:0 0 8px;border-radius:50%}
+.media-electricity{background:#277f72}.media-cold_water{background:#4d8fa8}.media-hot_water{background:#b76b59}.media-gas{background:#aa874a}.media-heat{background:#806b5a}
+.media-svg-stats{display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;color:var(--muted);font-size:11px;text-align:right}
+.media-svg-stats b{color:var(--text);font-weight:800}
+.svg-chart{display:block;width:100%;height:auto;overflow:visible;font-family:Inter,"Segoe UI",Arial,sans-serif}
+.svg-chart-bg{fill:#fff}
+.svg-grid-line{stroke:#e5eaed;stroke-width:1}
+.svg-axis-text{fill:#71808b;font-size:11px;font-weight:600}
+.svg-x-label{font-size:10px}
+.svg-unit-label{fill:#66747e;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.svg-media-line{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.svg-media-point{stroke:#fff;stroke-width:2}
+.svg-empty-text{fill:#7a8791;font-size:13px;font-weight:600}
+
+.sankey-card .card-head{align-items:center}
+.sankey-summary{color:var(--muted);font-size:12px;font-weight:700;white-space:nowrap}
+.sankey-wrap{margin:-3px -8px -6px;overflow-x:auto}
+.sankey-svg{min-width:760px}
+.sankey-link{transition:opacity .15s ease}
+.sankey-link:hover{opacity:.55!important}
+.sankey-source{fill:#153f39}
+.sankey-source-label{fill:#31443f;font-size:12px;font-weight:800}
+.sankey-label{fill:#45535e;font-size:10.5px;font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+.sankey-label-mid{font-weight:800}
+.sankey-legend text{fill:#66747e;font-size:11px;font-weight:600}
+.sankey-legend-variable{fill:#277f72}
+.sankey-legend-fixed{fill:#277f72;opacity:.48}
+
+@media(max-width:1000px){
+  .media-svg-grid{grid-template-columns:1fr}
+  .media-svg-panel,.media-svg-panel:nth-child(even){border-right:0}
+  .media-svg-panel-wide{grid-column:auto}
+}
+@media(max-width:650px){
+  .svg-analytics-head{align-items:flex-start}
+  .analytics-range{justify-content:flex-start}
+  .media-svg-grid{margin-left:-18px;margin-right:-18px;margin-bottom:-18px}
+  .media-svg-head{display:block}
+  .media-svg-stats{justify-content:flex-start;text-align:left;margin-top:8px}
+}

@@ -1,9 +1,18 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 let STATE = null;
+let SVG_ANALYTICS_RANGE = 'billing';
 const nf = new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:3});
 const moneyFmt = new Intl.NumberFormat('cs-CZ',{style:'currency',currency:'CZK',maximumFractionDigits:0});
 const utilityLabel = {electricity:'Elektřina',cold_water:'Studená voda',hot_water:'Teplá voda',gas:'Plyn',heat:'Teplo'};
+const utilitySvgMeta = {
+  electricity:{unit:'kWh',color:'#277f72',soft:'#d9ebe7'},
+  cold_water:{unit:'m³',color:'#4d8fa8',soft:'#dcecf2'},
+  hot_water:{unit:'m³',color:'#b76b59',soft:'#f1e0dc'},
+  gas:{unit:'m³',color:'#aa874a',soft:'#efe6d4'},
+  heat:{unit:'jedn.',color:'#806b5a',soft:'#e8e1dc'}
+};
+function tr(text){ return window.t ? window.t(text) : text; }
 
 function money(v){ return moneyFmt.format(Number(v||0)); }
 function escapeHtml(s=''){ return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c])); }
@@ -92,6 +101,7 @@ function renderDashboard(){
   drawHeatingTrendChart(d.months||[]);
   drawExpenseTreeChart(d.months||[],b);
   drawWaterfall(b);
+  renderSvgAnalytics(d.months||[],b);
 }
 
 function renderHeatAllocatorDashboard(summary){
@@ -587,9 +597,202 @@ function drawWaterfall(b){
   x.restore();
 }
 
+function selectedSvgMonths(months,billing){
+  const rows=[...(months||[])];
+  if(SVG_ANALYTICS_RANGE==='12m') return rows.slice(-12);
+  if(billing?.start&&billing?.end){
+    const selected=rows.filter(m=>m.month>=billing.start&&m.month<=billing.end);
+    if(selected.length) return selected;
+  }
+  return rows.slice(-12);
+}
+
+function setSvgAnalyticsRange(range){
+  if(!['billing','12m'].includes(range))return;
+  SVG_ANALYTICS_RANGE=range;
+  $('[data-analytics-range]').forEach(btn=>btn.classList.toggle('active',btn.dataset.analyticsRange===range));
+  if(STATE) renderSvgAnalytics(STATE.dashboard?.months||[],STATE.dashboard?.billing||{});
+}
+
+function svgSafe(value){ return escapeHtml(String(value??'')); }
+
+function renderSvgAnalytics(months,billing){
+  const selected=selectedSvgMonths(months,billing);
+  for(const utility of Object.keys(utilitySvgMeta)) renderMediaSvgChart(utility,selected);
+  renderCostSankey(selected);
+}
+
+function renderMediaSvgChart(utility,months){
+  const svg=$(`#mediaChart-${utility}`);
+  const stat=$(`#mediaStat-${utility}`);
+  if(!svg||!stat)return;
+
+  const meta=utilitySvgMeta[utility];
+  const rows=(months||[]).map(m=>({
+    month:m.month,
+    value:Number(m.measured?.[utility]||0),
+    cost:Number(m.utility_costs?.[utility]||0)
+  }));
+  const total=rows.reduce((s,r)=>s+r.value,0);
+  const totalCost=rows.reduce((s,r)=>s+r.cost,0);
+  const latest=rows.length?rows[rows.length-1].value:0;
+
+  stat.innerHTML=`<span><b>${nf.format(total)}</b> ${svgSafe(meta.unit)}</span><span>${money(totalCost)}</span><span>${tr('Poslední')}: ${nf.format(latest)} ${svgSafe(meta.unit)}</span>`;
+
+  const W=760,H=240,left=68,right=20,top=24,bottom=38;
+  const plotW=W-left-right,plotH=H-top-bottom;
+  const max=Math.max(...rows.map(r=>r.value),0);
+
+  if(!rows.length||max<=0){
+    svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect><text class="svg-empty-text" x="${W/2}" y="${H/2}" text-anchor="middle">${svgSafe(tr('Zatím není co zobrazit.'))}</text>`;
+    return;
+  }
+
+  const y=v=>top+plotH-(v/max)*plotH;
+  const x=i=>rows.length===1?left+plotW/2:left+(plotW*i/(rows.length-1));
+  const grid=[];
+  for(let i=0;i<5;i++){
+    const value=max*(1-i/4),gy=top+plotH*i/4;
+    grid.push(`<line class="svg-grid-line" x1="${left}" y1="${gy}" x2="${W-right}" y2="${gy}"></line>`);
+    grid.push(`<text class="svg-axis-text" x="${left-10}" y="${gy+4}" text-anchor="end">${svgSafe(nf.format(value))}</text>`);
+  }
+
+  const points=rows.map((r,i)=>[x(i),y(r.value)]);
+  let linePath=`M ${points[0][0].toFixed(2)} ${points[0][1].toFixed(2)}`;
+  for(let i=1;i<points.length;i++) linePath+=` L ${points[i][0].toFixed(2)} ${points[i][1].toFixed(2)}`;
+  const areaPath=`${linePath} L ${points[points.length-1][0].toFixed(2)} ${(top+plotH).toFixed(2)} L ${points[0][0].toFixed(2)} ${(top+plotH).toFixed(2)} Z`;
+
+  const labelStep=Math.max(1,Math.ceil(rows.length/6));
+  const labels=rows.map((r,i)=>{
+    if(i%labelStep!==0&&i!==rows.length-1)return '';
+    return `<text class="svg-axis-text svg-x-label" x="${x(i)}" y="${H-13}" text-anchor="middle">${svgSafe(monthLabel(r.month))}</text>`;
+  }).join('');
+
+  const dots=rows.map((r,i)=>`<circle class="svg-media-point" cx="${x(i)}" cy="${y(r.value)}" r="4" style="fill:${meta.color}"><title>${svgSafe(r.month)} · ${svgSafe(nf.format(r.value))} ${svgSafe(meta.unit)} · ${svgSafe(money(r.cost))}</title></circle>`).join('');
+
+  svg.innerHTML=`
+    <rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>
+    ${grid.join('')}
+    <path d="${areaPath}" style="fill:${meta.soft};opacity:.78"></path>
+    <path class="svg-media-line" d="${linePath}" style="stroke:${meta.color}"></path>
+    ${dots}
+    ${labels}
+    <text class="svg-unit-label" x="${left}" y="15">${svgSafe(meta.unit)}</text>
+  `;
+}
+
+function sankeyRibbon(x0,y0a,y0b,x1,y1a,y1b){
+  const bend=(x1-x0)*.44;
+  return `M ${x0} ${y0a} C ${x0+bend} ${y0a}, ${x1-bend} ${y1a}, ${x1} ${y1a} L ${x1} ${y1b} C ${x1-bend} ${y1b}, ${x0+bend} ${y0b}, ${x0} ${y0b} Z`;
+}
+
+function renderCostSankey(months){
+  const svg=$('#costSankey');
+  const summary=$('#sankeySummary');
+  if(!svg||!summary)return;
+
+  const utilities=Object.keys(utilitySvgMeta).map(key=>{
+    const variable=(months||[]).reduce((s,m)=>s+Number(m.variable_costs?.[key]||0),0);
+    const fixed=(months||[]).reduce((s,m)=>s+Number(m.fixed_costs?.[key]||0),0);
+    return {key,label:utilityLabel[key],variable,fixed,total:variable+fixed,color:utilitySvgMeta[key].color};
+  }).filter(u=>u.total>0);
+
+  const total=utilities.reduce((s,u)=>s+u.total,0);
+  summary.textContent=total>0?`${tr('Celkové náklady')}: ${money(total)}`:'';
+
+  const W=960,H=460,top=34,bottom=34,available=H-top-bottom,nodeW=18;
+  if(total<=0){
+    svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect><text class="svg-empty-text" x="${W/2}" y="${H/2}" text-anchor="middle">${svgSafe(tr('Zatím není co zobrazit.'))}</text>`;
+    return;
+  }
+
+  const leaves=[];
+  for(const u of utilities){
+    if(u.variable>0)leaves.push({utility:u,key:'variable',label:`${u.label} · ${tr('Spotřeba')}`,value:u.variable,opacity:.92});
+    if(u.fixed>0)leaves.push({utility:u,key:'fixed',label:`${u.label} · ${tr('Fixní')}`,value:u.fixed,opacity:.48});
+  }
+
+  const utilGap=14,leafGap=8;
+  const scale=Math.max(.001,Math.min(
+    (available-utilGap*Math.max(0,utilities.length-1))/total,
+    (available-leafGap*Math.max(0,leaves.length-1))/total
+  ));
+
+  const sourceH=total*scale;
+  const sourceY=(H-sourceH)/2;
+  const x0=54,x1=360,x2=744;
+
+  const utilHeight=total*scale+utilGap*Math.max(0,utilities.length-1);
+  let uy=(H-utilHeight)/2;
+  for(const u of utilities){u.y=uy;u.h=u.total*scale;uy+=u.h+utilGap;}
+
+  const leafHeight=total*scale+leafGap*Math.max(0,leaves.length-1);
+  let ly=(H-leafHeight)/2;
+  for(const leaf of leaves){leaf.y=ly;leaf.h=leaf.value*scale;ly+=leaf.h+leafGap;}
+
+  let sourceCursor=sourceY;
+  const sourceLinks=[];
+  for(const u of utilities){
+    sourceLinks.push({
+      d:sankeyRibbon(x0+nodeW,sourceCursor,sourceCursor+u.h,x1,u.y,u.y+u.h),
+      color:u.color,label:`${tr('Celkové náklady')} → ${u.label}`,value:u.total
+    });
+    sourceCursor+=u.h;
+  }
+
+  const leafMap=new Map(leaves.map(l=>[`${l.utility.key}:${l.key}`,l]));
+  const detailLinks=[];
+  for(const u of utilities){
+    let cursor=u.y;
+    for(const kind of ['variable','fixed']){
+      const leaf=leafMap.get(`${u.key}:${kind}`);
+      if(!leaf)continue;
+      detailLinks.push({
+        d:sankeyRibbon(x1+nodeW,cursor,cursor+leaf.h,x2,leaf.y,leaf.y+leaf.h),
+        color:u.color,opacity:leaf.opacity,
+        label:`${u.label} → ${kind==='variable'?tr('Spotřeba'):tr('Fixní')}`,value:leaf.value
+      });
+      cursor+=leaf.h;
+    }
+  }
+
+  const links=[
+    ...sourceLinks.map(l=>`<path class="sankey-link" d="${l.d}" style="fill:${l.color};opacity:.23"><title>${svgSafe(l.label)} · ${svgSafe(money(l.value))}</title></path>`),
+    ...detailLinks.map(l=>`<path class="sankey-link" d="${l.d}" style="fill:${l.color};opacity:${l.opacity*.32}"><title>${svgSafe(l.label)} · ${svgSafe(money(l.value))}</title></path>`)
+  ].join('');
+
+  const utilityNodes=utilities.map(u=>`
+    <g class="sankey-node">
+      <rect x="${x1}" y="${u.y}" width="${nodeW}" height="${Math.max(2,u.h)}" rx="2" style="fill:${u.color}"><title>${svgSafe(u.label)} · ${svgSafe(money(u.total))}</title></rect>
+      <text class="sankey-label sankey-label-mid" x="${x1+nodeW+9}" y="${u.y+u.h/2+4}">${svgSafe(u.label)} · ${svgSafe(money(u.total))}</text>
+    </g>`).join('');
+
+  const leafNodes=leaves.map(l=>`
+    <g class="sankey-node">
+      <rect x="${x2}" y="${l.y}" width="${nodeW}" height="${Math.max(2,l.h)}" rx="2" style="fill:${l.utility.color};opacity:${l.opacity}"><title>${svgSafe(l.label)} · ${svgSafe(money(l.value))}</title></rect>
+      <text class="sankey-label" x="${x2+nodeW+9}" y="${l.y+l.h/2+4}">${svgSafe(l.label)} · ${svgSafe(money(l.value))}</text>
+    </g>`).join('');
+
+  svg.innerHTML=`
+    <rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>
+    ${links}
+    <rect x="${x0}" y="${sourceY}" width="${nodeW}" height="${sourceH}" rx="2" class="sankey-source"><title>${svgSafe(tr('Celkové náklady'))} · ${svgSafe(money(total))}</title></rect>
+    <text class="sankey-source-label" x="${x0}" y="${Math.max(18,sourceY-10)}">${svgSafe(tr('Celkové náklady'))}</text>
+    ${utilityNodes}
+    ${leafNodes}
+    <g class="sankey-legend">
+      <rect x="360" y="438" width="12" height="12" class="sankey-legend-variable"></rect>
+      <text x="378" y="448">${svgSafe(tr('Spotřeba'))}</text>
+      <rect x="474" y="438" width="12" height="12" class="sankey-legend-fixed"></rect>
+      <text x="492" y="448">${svgSafe(tr('Fixní'))}</text>
+    </g>
+  `;
+}
+
 async function connectionCheck(){
   try{await api('/health');if(document.visibilityState==='visible'&&STATE===null)await reloadState()}catch(_){}
 }
+$('[data-analytics-range]').forEach(btn=>btn.addEventListener('click',()=>setSvgAnalyticsRange(btn.dataset.analyticsRange)));
 window.setInterval(connectionCheck,30000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reloadState().catch(()=>{})});
 window.addEventListener('focus',()=>connectionCheck());
