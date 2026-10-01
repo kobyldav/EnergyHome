@@ -596,7 +596,13 @@ class Handler(BaseHTTPRequestHandler):
             data = store.load()
             return self._json({"data": data, "dashboard": dashboard(data)})
         if path == "/health":
-            return self._json({"ok": True, "app": "EnergyHome", "version": APP_VERSION})
+            return self._json({
+                "ok": True,
+                "app": "EnergyHome",
+                "version": APP_VERSION,
+                "data_file": str(DATA_FILE),
+                "data_exists": DATA_FILE.is_file(),
+            })
         if path.startswith("/static/"):
             rel = unquote(path[len("/static/"):])
             return self._serve_file(BASE_DIR / "static" / rel)
