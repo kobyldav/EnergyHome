@@ -275,3 +275,23 @@ button,input,select{font:inherit}
   .media-svg-head{display:block}
   .media-svg-stats{justify-content:flex-start;text-align:left;margin-top:8px}
 }
+
+
+/* Dashboard charts migrated from canvas to SVG for stable Windows DPI text. */
+.dashboard-svg-chart{display:block;width:100%;height:auto;min-height:220px;font-family:Inter,"Segoe UI",Arial,sans-serif;overflow:visible}
+.chart-card .dashboard-svg-chart{padding:2px 0 0}
+.svg-legend-text{fill:#5f6b75;font-size:11px;font-weight:650}
+.svg-category-label{fill:#53616c;font-size:12px;font-weight:700}
+.svg-value-label{fill:#4d5a64;font-size:11px;font-weight:700}
+.svg-value-center{paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+.svg-note-text{fill:#74818b;font-size:11px;font-weight:600}
+.svg-bar-primary{fill:#277f72}.svg-bar-secondary{fill:#9aa9b2}.svg-bar-fixed{fill:#b8c8c5}.svg-bar-heat{fill:#806b5a}
+.svg-point-primary{fill:#277f72;stroke:#fff;stroke-width:2}
+.svg-line-primary{fill:none;stroke:#277f72;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.svg-zero-line{stroke:#cbd4d9;stroke-width:1.2}
+.svg-waterfall-positive{fill:#2c8175}.svg-waterfall-negative{fill:#c56a6a}
+.svg-waterfall-connector{stroke:#9eabb3;stroke-width:1.2;stroke-dasharray:5 4}
+.svg-treemap-title{fill:#fff;font-size:14px;font-weight:800}
+.svg-treemap-value{fill:#fff;font-size:12px;font-weight:650}
+.svg-treemap-small{fill:#fff;font-size:10px;font-weight:750}
+@media(max-width:700px){.dashboard-svg-chart{min-width:620px}.chart-card{overflow-x:auto}}

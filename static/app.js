@@ -205,397 +205,193 @@ function editHeatAllocator(id){const x=STATE.data.heat_allocators.find(v=>v.id==
 function editTariff(id){const x=STATE.data.tariffs.find(v=>v.id===id);if(!x)return;fillForm('#tariffForm',x);openTab('tariffs')}
 function editAdvance(id){const x=STATE.data.advances.find(v=>v.id===id);if(!x)return;fillForm('#advanceForm',x);openTab('advances')}
 
-function ctx(canvas){
-  const c=$(canvas);
-  const rect=c.getBoundingClientRect();
-  const w=Math.max(320,Math.round(rect.width||c.parentElement?.clientWidth||700));
-  const h=Number(c.getAttribute('height')||280);
-  const dpr=Math.min(2.5,Math.max(1,window.devicePixelRatio||1));
 
-  c.style.display='block';
-  c.style.width='100%';
-  c.style.height=`${h}px`;
-  c.width=Math.round(w*dpr);
-  c.height=Math.round(h*dpr);
 
-  const x=c.getContext('2d');
-  x.setTransform(dpr,0,0,dpr,0,0);
-  x.clearRect(0,0,w,h);
-  x.imageSmoothingEnabled=true;
-  if('textRendering' in x)x.textRendering='optimizeLegibility';
-  x.textBaseline='middle';
-  x.font='500 14px "Segoe UI", Arial, sans-serif';
-  return {c,x,w,h,dpr};
-}
-function shortText(x,text,maxWidth){
-  text=String(text??'');
-  if(x.measureText(text).width<=maxWidth)return text;
-  let out=text;
-  while(out.length>2&&x.measureText(out+'…').width>maxWidth)out=out.slice(0,-1);
-  return out+'…';
-}
-function chartEmpty(x,msg='Zatím není co zobrazit.'){
-  const rect=x.canvas.getBoundingClientRect();
-  x.save();
-  x.fillStyle='#6d7885';
-  x.textAlign='center';
-  x.textBaseline='middle';
-  x.font='500 14px "Segoe UI", Arial, sans-serif';
-  x.fillText(msg,rect.width/2,54);
-  x.restore();
-}
-function axes(x,w,h,max,left=88,bottom=44,formatter=v=>nf.format(v)){
-  const top=34;
-  const plotH=h-bottom-top;
-  x.save();
-  x.strokeStyle='#e3e8eb';
-  x.fillStyle='#687580';
-  x.lineWidth=1;
-  x.textAlign='right';
-  x.textBaseline='middle';
-  x.font='600 13px "Segoe UI", Arial, sans-serif';
 
+
+function svgChartEmpty(selector,msg='Zatím není co zobrazit.',W=760,H=280){
+  const svg=$(selector);
+  if(!svg)return;
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>
+    <text class="svg-empty-text" x="${W/2}" y="${H/2}" text-anchor="middle">${svgSafe(msg)}</text>`;
+}
+function svgYAxis(W,H,min,max,left=82,right=18,top=34,bottom=42,formatter=v=>nf.format(v)){
+  const plotW=W-left-right,plotH=H-top-bottom;
+  const span=Math.max(1e-9,max-min);
+  const y=v=>top+(max-v)/span*plotH;
+  let grid='';
   for(let i=0;i<5;i++){
-    const y=top+plotH*i/4;
-    x.beginPath();x.moveTo(left,y);x.lineTo(w-14,y);x.stroke();
-    x.fillText(formatter(max*(1-i/4)),left-10,y);
+    const value=max-span*i/4,gy=top+plotH*i/4;
+    grid+=`<line class="svg-grid-line" x1="${left}" y1="${gy}" x2="${W-right}" y2="${gy}"></line>`;
+    grid+=`<text class="svg-axis-text" x="${left-10}" y="${gy+4}" text-anchor="end">${svgSafe(formatter(value))}</text>`;
   }
-
-  x.restore();
-  return {left,bottom,top,plotW:w-left-14,plotH,base:h-bottom};
+  return {left,right,top,bottom,plotW,plotH,base:H-bottom,y,grid};
+}
+function svgLegend(items,x=82,y=17){
+  let px=x,out='';
+  for(const item of items){
+    const width=Math.max(72,Math.min(175,28+String(item.label).length*7));
+    out+=`<rect x="${px}" y="${y-7}" width="12" height="12" rx="1" style="fill:${item.color}"></rect>`;
+    out+=`<text class="svg-legend-text" x="${px+18}" y="${y+3}">${svgSafe(item.label)}</text>`;
+    px+=width;
+  }
+  return out;
+}
+function svgMonthLabels(data,xFn,H,step=null){
+  const every=step||Math.max(1,Math.ceil(data.length/6));
+  return data.map((m,i)=>{
+    if(i%every!==0&&i!==data.length-1)return '';
+    return `<text class="svg-axis-text svg-x-label" x="${xFn(i)}" y="${H-14}" text-anchor="middle">${svgSafe(monthLabel(m.month))}</text>`;
+  }).join('');
 }
 function monthLabel(m){return String(m||'').slice(2).replace('-','/')}
-function legend(x,items,startX=88,y=17){
-  x.save();
-  let px=startX;
-  x.font='600 13px "Segoe UI", Arial, sans-serif';
-  x.textBaseline='middle';
-  for(const item of items){
-    x.fillStyle=item.color;
-    x.fillRect(px,y-6,12,12);
-    px+=17;
-    x.fillStyle='#5f6b75';
-    x.textAlign='left';
-    const label=shortText(x,item.label,155);
-    x.fillText(label,px,y);
-    px+=x.measureText(label).width+22;
-  }
-  x.restore();
-}
+
 function drawCostChart(months){
-  const {x,w,h}=ctx('#costChart'),data=months.slice(-10);
-  if(!data.length)return chartEmpty(x);
-
+  const svg=$('#costChart'),data=months.slice(-10),W=760,H=280;
+  if(!svg||!data.length)return svgChartEmpty('#costChart','Zatím není co zobrazit.',W,H);
   const max=Math.max(...data.map(m=>Number(m.total_cost||0)),1);
-  const g=axes(x,w,h,max,92,46,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
-  const slot=g.plotW/data.length,bw=Math.max(10,slot*.54);
-
-  legend(x,[{label:'Fixní',color:'#b8c8c5'},{label:'Proměnlivé',color:'#277f72'}],92);
-
-  x.save();
-  x.font='600 13px "Segoe UI", Arial, sans-serif';
-  x.textBaseline='middle';
-  data.forEach((m,i)=>{
-    const cx=g.left+slot*(i+.5);
-    const fixed=Number(m.fixed_cost||0)/max*g.plotH;
-    const variable=Math.max(0,Number(m.total_cost||0)-Number(m.fixed_cost||0))/max*g.plotH;
-    let y=g.base;
-    x.fillStyle='#b8c8c5';x.fillRect(cx-bw/2,y-fixed,bw,fixed);y-=fixed;
-    x.fillStyle='#277f72';x.fillRect(cx-bw/2,y-variable,bw,variable);
-    x.fillStyle='#65717b';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-17);
-  });
-  x.restore();
+  const g=svgYAxis(W,H,0,max,92,18,38,44,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
+  const slot=g.plotW/data.length,bw=Math.min(54,slot*.56);
+  const bars=data.map((m,i)=>{
+    const cx=g.left+slot*(i+.5),fixed=Number(m.fixed_cost||0),variable=Math.max(0,Number(m.total_cost||0)-fixed);
+    const hf=fixed/max*g.plotH,hv=variable/max*g.plotH,yFixed=g.base-hf,yVar=yFixed-hv;
+    return `<rect x="${cx-bw/2}" y="${yFixed}" width="${bw}" height="${hf}" class="svg-bar-fixed"><title>${svgSafe(m.month)} · Fixní ${svgSafe(money(fixed))}</title></rect>
+      <rect x="${cx-bw/2}" y="${yVar}" width="${bw}" height="${hv}" class="svg-bar-primary"><title>${svgSafe(m.month)} · Proměnlivé ${svgSafe(money(variable))}</title></rect>`;
+  }).join('');
+  const x=i=>g.left+slot*(i+.5);
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${g.grid}
+    ${svgLegend([{label:'Fixní',color:'#b8c8c5'},{label:'Proměnlivé',color:'#277f72'}],92,18)}
+    ${bars}${svgMonthLabels(data,x,H)}`;
 }
 function drawUsageChart(months){
-  const {x,w,h}=ctx('#usageChart'),data=months.slice(-10);
-  if(!data.length)return chartEmpty(x);
-
-  const measuredMax=Math.max(...data.map(m=>Number(m.measured?.electricity||0)));
-  if(measuredMax<=0)return chartEmpty(x,'Zatím není naměřená spotřeba elektřiny.');
-
-  const g=axes(x,w,h,measuredMax,88,46,v=>`${nf.format(v)} kWh`);
-  const slot=g.plotW/data.length,bw=Math.max(10,slot*.54);
+  const svg=$('#usageChart'),data=months.slice(-10),W=760,H=280;
+  if(!svg||!data.length)return svgChartEmpty('#usageChart','Zatím není co zobrazit.',W,H);
+  const max=Math.max(...data.map(m=>Number(m.measured?.electricity||0)),0);
+  if(max<=0)return svgChartEmpty('#usageChart','Zatím není naměřená spotřeba elektřiny.',W,H);
+  const g=svgYAxis(W,H,0,max,86,18,38,44,v=>`${nf.format(v)} kWh`);
+  const slot=g.plotW/data.length,bw=Math.min(54,slot*.56);
   const items=[
     {key:'passive',label:'Trvalé spotřebiče',color:'#7aa99f'},
     {key:'active',label:'Cyklické spotřebiče',color:'#2b8074'},
     {key:'unassigned',label:'Ostatní používání',color:'#c3a25d'}
   ];
-
-  legend(x,items,88);
-
-  x.save();
-  x.font='600 13px "Segoe UI", Arial, sans-serif';
-  x.textBaseline='middle';
-  data.forEach((m,i)=>{
-    const cx=g.left+slot*(i+.5);let y=g.base;
+  const bars=data.map((m,i)=>{
+    const cx=g.left+slot*(i+.5);let y=g.base,out='';
     for(const item of items){
-      const v=Math.max(0,Number(m[item.key]?.electricity||0));
-      const hh=v/measuredMax*g.plotH;
+      const v=Math.max(0,Number(m[item.key]?.electricity||0)),hh=v/max*g.plotH;
       y-=hh;
-      x.fillStyle=item.color;
-      x.fillRect(cx-bw/2,y,bw,hh);
+      out+=`<rect x="${cx-bw/2}" y="${y}" width="${bw}" height="${hh}" style="fill:${item.color}"><title>${svgSafe(m.month)} · ${svgSafe(item.label)} ${svgSafe(nf.format(v))} kWh</title></rect>`;
     }
-    x.fillStyle='#65717b';
-    x.textAlign='center';
-    x.fillText(monthLabel(m.month),cx,h-17);
-  });
-  x.restore();
+    return out;
+  }).join('');
+  const x=i=>g.left+slot*(i+.5);
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${g.grid}
+    ${svgLegend(items,86,18)}${bars}${svgMonthLabels(data,x,H)}`;
 }
 function drawApplianceChart(m){
-  const {x,w,h}=ctx('#applianceChart');
-  if(!m)return chartEmpty(x);
-
-  const measured=Number(m.measured?.electricity||0);
-  const useEstimate=measured<=0;
+  const svg=$('#applianceChart'),W=760,H=300;
+  if(!svg||!m)return svgChartEmpty('#applianceChart','Zatím není co zobrazit.',W,H);
+  const measured=Number(m.measured?.electricity||0),useEstimate=measured<=0;
   let rows=(m.appliances||[]).map(a=>({
     name:a.name,
     value:Number(useEstimate?(a.estimated_usage?.electricity||0):(a.attributed_usage?.electricity??a.usage?.electricity??0))
   })).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
-
   if(!useEstimate){
     const other=Number(m.unassigned?.electricity||0);
     if(other>0)rows.push({name:'Ostatní používání',value:other,other:true});
   }
-
-  if(!rows.length)return chartEmpty(x,'Pro tento měsíc zatím není co zobrazit.');
-
-  const shown=rows.slice(0,8);
-  const max=Math.max(...shown.map(r=>r.value),1);
-  const left=Math.min(210,Math.max(145,w*.29));
-  const top=useEstimate?66:34;
-  const rowH=Math.max(32,Math.min(40,(h-top-24)/shown.length));
-  const barW=Math.max(100,w-left-115);
-
-  x.save();
-  x.textBaseline='middle';
-
-  if(useEstimate){
-    x.fillStyle='#6d7885';
-    x.font='500 14px "Segoe UI", Arial, sans-serif';
-    x.textAlign='center';
-    x.fillText(shortText(x,'Odhad profilu bez odečtu elektroměru — nepřičítá se ke spotřebě.',w-48),w/2,28);
-  }
-
-  shown.forEach((r,i)=>{
-    const y=top+i*rowH;
-    x.font='600 14px "Segoe UI", Arial, sans-serif';
-    x.fillStyle='#56636e';
-    x.textAlign='right';
-    x.fillText(shortText(x,r.name,left-28),left-14,y+10);
-
-    const width=Math.max(5,r.value/max*barW);
-    x.fillStyle=r.other?'#c3a25d':(useEstimate?'#8fb4ad':'#277f72');
-    x.fillRect(left,y,width,20);
-
-    const valueText=`${nf.format(r.value)} kWh`;
-    x.font='600 13px "Segoe UI", Arial, sans-serif';
-    const tw=x.measureText(valueText).width;
-    if(left+width+10+tw<w-10){
-      x.fillStyle='#4f5b65';
-      x.textAlign='left';
-      x.fillText(valueText,left+width+10,y+10);
-    }else{
-      x.fillStyle='#ffffff';
-      x.textAlign='right';
-      x.fillText(valueText,left+width-7,y+10);
-    }
-  });
-
-  x.restore();
+  if(!rows.length)return svgChartEmpty('#applianceChart','Pro tento měsíc zatím není co zobrazit.',W,H);
+  rows=rows.slice(0,8);
+  const max=Math.max(...rows.map(r=>r.value),1),left=185,right=92,top=useEstimate?58:28,rowH=Math.min(32,(H-top-18)/rows.length),barW=W-left-right;
+  const note=useEstimate?`<text class="svg-note-text" x="${W/2}" y="24" text-anchor="middle">Odhad profilu bez odečtu elektroměru — nepřičítá se ke spotřebě.</text>`:'';
+  const content=rows.map((r,i)=>{
+    const y=top+i*rowH,width=Math.max(3,r.value/max*barW),color=r.other?'#c3a25d':(useEstimate?'#8fb4ad':'#277f72');
+    return `<text class="svg-category-label" x="${left-12}" y="${y+17}" text-anchor="end">${svgSafe(r.name)}</text>
+      <rect x="${left}" y="${y+5}" width="${width}" height="20" rx="2" style="fill:${color}"><title>${svgSafe(r.name)} · ${svgSafe(nf.format(r.value))} kWh</title></rect>
+      <text class="svg-value-label" x="${Math.min(W-8,left+width+8)}" y="${y+19}">${svgSafe(nf.format(r.value))} kWh</text>`;
+  }).join('');
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${note}${content}`;
 }
 function drawCashflowChart(months){
-  const {x,w,h}=ctx('#cashflowChart'),data=months.slice(-10);
-  if(!data.length)return chartEmpty(x);
-
+  const svg=$('#cashflowChart'),data=months.slice(-10),W=760,H=300;
+  if(!svg||!data.length)return svgChartEmpty('#cashflowChart','Zatím není co zobrazit.',W,H);
   const max=Math.max(...data.flatMap(m=>[Number(m.total_cost||0),Number(m.advance||0)]),1);
-  const g=axes(x,w,h,max,92,46,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
-  const slot=g.plotW/data.length,bw=Math.max(7,slot*.27);
-
-  legend(x,[{label:'Náklady',color:'#277f72'},{label:'Zálohy',color:'#9aa9b2'}],92);
-
-  x.save();
-  x.font='600 13px "Segoe UI", Arial, sans-serif';
-  x.textBaseline='middle';
-  data.forEach((m,i)=>{
-    const cx=g.left+slot*(i+.5);
-    const hc=Number(m.total_cost||0)/max*g.plotH;
-    const ha=Number(m.advance||0)/max*g.plotH;
-    x.fillStyle='#277f72';x.fillRect(cx-bw-3,g.base-hc,bw,hc);
-    x.fillStyle='#9aa9b2';x.fillRect(cx+3,g.base-ha,bw,ha);
-    x.fillStyle='#65717b';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-17);
-  });
-  x.restore();
+  const g=svgYAxis(W,H,0,max,92,18,38,44,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
+  const slot=g.plotW/data.length,bw=Math.min(28,slot*.26);
+  const bars=data.map((m,i)=>{
+    const cx=g.left+slot*(i+.5),cost=Number(m.total_cost||0),adv=Number(m.advance||0),hc=cost/max*g.plotH,ha=adv/max*g.plotH;
+    return `<rect x="${cx-bw-3}" y="${g.base-hc}" width="${bw}" height="${hc}" class="svg-bar-primary"><title>${svgSafe(m.month)} · Náklady ${svgSafe(money(cost))}</title></rect>
+      <rect x="${cx+3}" y="${g.base-ha}" width="${bw}" height="${ha}" class="svg-bar-secondary"><title>${svgSafe(m.month)} · Zálohy ${svgSafe(money(adv))}</title></rect>`;
+  }).join('');
+  const x=i=>g.left+slot*(i+.5);
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${g.grid}
+    ${svgLegend([{label:'Náklady',color:'#277f72'},{label:'Zálohy',color:'#9aa9b2'}],92,18)}
+    ${bars}${svgMonthLabels(data,x,H)}`;
 }
 function drawBalanceTrendChart(months){
-  const {x,w,h}=ctx('#balanceTrendChart'),data=months.slice(-12);
-  if(!data.length)return chartEmpty(x);
-
+  const svg=$('#balanceTrendChart'),data=months.slice(-12),W=760,H=280;
+  if(!svg||!data.length)return svgChartEmpty('#balanceTrendChart','Zatím není co zobrazit.',W,H);
   let cumulative=0;
-  const points=data.map(m=>({month:m.month,value:(cumulative+=Number(m.balance||0))}));
-  const min=Math.min(0,...points.map(p=>p.value));
-  const max=Math.max(0,...points.map(p=>p.value));
-  const rawSpan=Math.max(1,max-min);
-  const pad=Math.max(100,rawSpan*.08);
-  const lo=min-pad,hi=max+pad,span=hi-lo;
-  const left=96,bottom=46,top=34,plotW=w-left-18,plotH=h-bottom-top;
-  const yFor=v=>top+(hi-v)/span*plotH;
-
-  x.save();
-  x.font='600 13px "Segoe UI", Arial, sans-serif';
-  x.textBaseline='middle';
-
-  for(let i=0;i<5;i++){
-    const value=hi-span*i/4,y=yFor(value);
-    x.strokeStyle='#e3e8eb';x.lineWidth=1;
-    x.beginPath();x.moveTo(left,y);x.lineTo(w-14,y);x.stroke();
-    x.fillStyle='#687580';x.textAlign='right';
-    x.fillText(`${Math.round(value).toLocaleString('cs-CZ')} Kč`,left-10,y);
-  }
-
-  const zeroY=yFor(0);
-  x.strokeStyle='#cbd4d9';
-  x.beginPath();x.moveTo(left,zeroY);x.lineTo(w-14,zeroY);x.stroke();
-
-  x.strokeStyle='#277f72';x.lineWidth=2.5;
-  x.beginPath();
-  points.forEach((p,i)=>{
-    const px=left+(points.length===1?plotW/2:plotW*i/(points.length-1));
-    const py=yFor(p.value);
-    if(i===0)x.moveTo(px,py);else x.lineTo(px,py);
-  });
-  if(points.length>1)x.stroke();
-
-  points.forEach((p,i)=>{
-    const px=left+(points.length===1?plotW/2:plotW*i/(points.length-1));
-    const py=yFor(p.value);
-
-    x.fillStyle='#277f72';
-    x.beginPath();x.arc(px,py,5,0,Math.PI*2);x.fill();
-
-    x.font='600 13px "Segoe UI", Arial, sans-serif';
-    x.textAlign='center';x.textBaseline='middle';
-    x.fillStyle='#65717b';
-    x.fillText(monthLabel(p.month),px,h-17);
-
-    x.font='700 14px "Segoe UI", Arial, sans-serif';
-    x.fillStyle='#277f72';
-    x.fillText(money(p.value),px,Math.max(top+12,py-17));
-  });
-
-  x.restore();
+  const rows=data.map(m=>({month:m.month,value:(cumulative+=Number(m.balance||0))}));
+  const rawMin=Math.min(0,...rows.map(r=>r.value)),rawMax=Math.max(0,...rows.map(r=>r.value)),pad=Math.max(100,(rawMax-rawMin)*.08),min=rawMin-pad,max=rawMax+pad;
+  const g=svgYAxis(W,H,min,max,96,18,30,44,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
+  const x=i=>rows.length===1?g.left+g.plotW/2:g.left+g.plotW*i/(rows.length-1);
+  const path=rows.map((r,i)=>`${i?'L':'M'} ${x(i)} ${g.y(r.value)}`).join(' ');
+  const dots=rows.map((r,i)=>`<circle cx="${x(i)}" cy="${g.y(r.value)}" r="4.5" class="svg-point-primary"><title>${svgSafe(r.month)} · ${svgSafe(money(r.value))}</title></circle>
+    <text class="svg-value-label svg-value-center" x="${x(i)}" y="${Math.max(18,g.y(r.value)-12)}" text-anchor="middle">${svgSafe(money(r.value))}</text>`).join('');
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${g.grid}
+    <line class="svg-zero-line" x1="${g.left}" y1="${g.y(0)}" x2="${W-g.right}" y2="${g.y(0)}"></line>
+    <path class="svg-line-primary" d="${path}"></path>${dots}${svgMonthLabels(rows,x,H)}`;
 }
 function drawHeatingTrendChart(months){
-  const {x,w,h}=ctx('#heatingTrendChart'),data=months.slice(-12);
-  if(!data.length)return chartEmpty(x);
-
-  const max=Math.max(...data.map(m=>Number(m.measured?.heat||0)));
-  if(max<=0)return chartEmpty(x,'Zatím nejsou odečty spotřeby tepla.');
-
-  const g=axes(x,w,h,max,88,46,v=>`${nf.format(v)} jedn.`);
-  const slot=g.plotW/data.length,bw=Math.max(9,slot*.5);
-
-  x.save();
-  x.font='600 13px "Segoe UI", Arial, sans-serif';
-  x.textBaseline='middle';
-  data.forEach((m,i)=>{
-    const v=Number(m.measured?.heat||0);
-    const cx=g.left+slot*(i+.5),hh=v/max*g.plotH;
-    x.fillStyle='#8a6f5a';x.fillRect(cx-bw/2,g.base-hh,bw,hh);
-    x.fillStyle='#65717b';x.textAlign='center';x.fillText(monthLabel(m.month),cx,h-17);
-  });
-  x.restore();
+  const svg=$('#heatingTrendChart'),data=months.slice(-12),W=760,H=280;
+  if(!svg||!data.length)return svgChartEmpty('#heatingTrendChart','Zatím není co zobrazit.',W,H);
+  const max=Math.max(...data.map(m=>Number(m.measured?.heat||0)),0);
+  if(max<=0)return svgChartEmpty('#heatingTrendChart','Zatím nejsou odečty spotřeby tepla.',W,H);
+  const g=svgYAxis(W,H,0,max,86,18,30,44,v=>`${nf.format(v)} jedn.`);
+  const slot=g.plotW/data.length,bw=Math.min(48,slot*.52);
+  const bars=data.map((m,i)=>{
+    const v=Number(m.measured?.heat||0),cx=g.left+slot*(i+.5),hh=v/max*g.plotH;
+    return `<rect x="${cx-bw/2}" y="${g.base-hh}" width="${bw}" height="${hh}" class="svg-bar-heat"><title>${svgSafe(m.month)} · ${svgSafe(nf.format(v))} jedn.</title></rect>`;
+  }).join('');
+  const x=i=>g.left+slot*(i+.5);
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${g.grid}${bars}${svgMonthLabels(data,x,H)}`;
 }
 function drawExpenseTreeChart(months,billing){
-  const {x,w,h}=ctx('#expenseTreeChart');
-  if(!billing?.start)return chartEmpty(x);
-
-  const selected=months.filter(m=>m.month>=billing.start&&m.month<=billing.end);
-  const keys=['electricity','cold_water','hot_water','gas','heat'];
-  const rows=keys.map(k=>({
-    name:utilityLabel[k],
-    value:selected.reduce((s,m)=>s+Number(m.utility_costs?.[k]||0),0)
-  })).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
-
+  const svg=$('#expenseTreeChart'),W=960,H=260;
+  if(!svg||!billing?.start)return svgChartEmpty('#expenseTreeChart','Zatím není co zobrazit.',W,H);
+  const selected=months.filter(m=>m.month>=billing.start&&m.month<=billing.end),keys=['electricity','cold_water','hot_water','gas','heat'];
+  const rows=keys.map(k=>({name:utilityLabel[k],color:utilitySvgMeta[k].color,value:selected.reduce((s,m)=>s+Number(m.utility_costs?.[k]||0),0)})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
   const total=rows.reduce((s,r)=>s+r.value,0);
-  if(total<=0)return chartEmpty(x);
-
-  const colors=['#277f72','#5f9a91','#87aaa4','#a9956c','#8a6f5a'];
+  if(total<=0)return svgChartEmpty('#expenseTreeChart','Zatím není co zobrazit.',W,H);
   let px=0;
-
-  x.save();
-  x.textBaseline='top';
-
-  rows.forEach((r,i)=>{
-    const ww=i===rows.length-1?w-px:Math.round(w*r.value/total);
-    x.fillStyle=colors[i%colors.length];
-    x.fillRect(px,0,ww,h);
-
-    const pct=Math.round(r.value/total*100);
-    const pad=14;
-    const usable=ww-pad*2;
-
-    if(usable>=115){
-      x.fillStyle='#fff';
-      x.textAlign='left';
-      x.font='700 15px "Segoe UI", Arial, sans-serif';
-      x.fillText(shortText(x,r.name,usable),px+pad,14);
-      x.font='600 13px "Segoe UI", Arial, sans-serif';
-      x.fillText(shortText(x,money(r.value),usable),px+pad,40);
-      x.fillText(`${pct} %`,px+pad,62);
-    }else if(usable>=65){
-      x.fillStyle='#fff';
-      x.textAlign='center';
-      x.font='700 13px "Segoe UI", Arial, sans-serif';
-      x.fillText(shortText(x,r.name,usable),px+ww/2,16);
-      x.font='600 12px "Segoe UI", Arial, sans-serif';
-      x.fillText(`${pct} %`,px+ww/2,40);
-    }
-
-    px+=ww;
-  });
-
-  x.restore();
+  const blocks=rows.map((r,i)=>{
+    const ww=i===rows.length-1?W-px:W*r.value/total,pct=Math.round(r.value/total*100),x=px;px+=ww;
+    const text=ww>=120?`<text class="svg-treemap-title" x="${x+14}" y="28">${svgSafe(r.name)}</text><text class="svg-treemap-value" x="${x+14}" y="50">${svgSafe(money(r.value))}</text><text class="svg-treemap-value" x="${x+14}" y="70">${pct} %</text>`:
+      (ww>=70?`<text class="svg-treemap-small" x="${x+ww/2}" y="31" text-anchor="middle">${svgSafe(r.name)}</text><text class="svg-treemap-small" x="${x+ww/2}" y="50" text-anchor="middle">${pct} %</text>`:'');
+    return `<rect x="${x}" y="0" width="${ww}" height="${H}" style="fill:${r.color}"><title>${svgSafe(r.name)} · ${svgSafe(money(r.value))} · ${pct} %</title></rect>${text}`;
+  }).join('');
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${blocks}`;
 }
 function drawWaterfall(b){
-  const {x,w,h}=ctx('#waterfallChart');
-  if(!b.start)return chartEmpty(x);
-
-  const paid=Number(b.paid||0),cost=Number(b.actual_cost||0),balance=Number(b.current_balance||0);
-  const min=Math.min(0,balance),max=Math.max(1,paid,balance),span=max-min;
-  const left=96,right=28,top=36,bottom=50,plotW=w-left-right,plotH=h-top-bottom;
-  const yFor=v=>top+(max-v)/span*plotH;
-
-  x.save();
-  x.font='600 13px "Segoe UI", Arial, sans-serif';
-  x.textBaseline='middle';
-
-  for(let i=0;i<5;i++){
-    const value=max-span*i/4,y=yFor(value);
-    x.strokeStyle='#e3e8eb';
-    x.beginPath();x.moveTo(left,y);x.lineTo(w-right,y);x.stroke();
-    x.fillStyle='#687580';x.textAlign='right';
-    x.fillText(`${Math.round(value).toLocaleString('cs-CZ')} Kč`,left-10,y);
-  }
-
-  const centers=[left+plotW*.18,left+plotW*.5,left+plotW*.82];
-  const bw=Math.min(150,plotW*.18);
-  const zeroY=yFor(0),paidY=yFor(paid),balanceY=yFor(balance);
-
-  x.fillStyle='#2c8175';x.fillRect(centers[0]-bw/2,paidY,bw,zeroY-paidY);
-  x.fillStyle='#c56a6a';x.fillRect(centers[1]-bw/2,Math.min(paidY,balanceY),bw,Math.abs(balanceY-paidY));
-  x.fillStyle=balance>=0?'#2c8175':'#c56a6a';x.fillRect(centers[2]-bw/2,Math.min(zeroY,balanceY),bw,Math.abs(balanceY-zeroY));
-
-  const labels=[['Zálohy',paid,paidY],['Náklady',-cost,balanceY],['Zůstatek',balance,balanceY]];
-  labels.forEach((item,i)=>{
-    x.fillStyle='#53606b';x.textAlign='center';
-    x.font='700 14px "Segoe UI", Arial, sans-serif';
-    x.fillText(item[0],centers[i],h-19);
-    x.font='700 13px "Segoe UI", Arial, sans-serif';
-    const labelY=i===0?paidY-14:(i===1?Math.min(paidY,balanceY)-14:Math.min(zeroY,balanceY)-14);
-    x.fillText(money(item[1]),centers[i],Math.max(top+10,labelY));
-  });
-
-  x.restore();
+  const svg=$('#waterfallChart'),W=960,H=260;
+  if(!svg||!b?.start)return svgChartEmpty('#waterfallChart','Zatím není co zobrazit.',W,H);
+  const paid=Number(b.paid||0),cost=Number(b.actual_cost||0),balance=Number(b.current_balance||0),min=Math.min(0,balance),max=Math.max(1,paid,balance),pad=Math.max(100,(max-min)*.08);
+  const g=svgYAxis(W,H,min-pad,max+pad,96,26,28,46,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
+  const centers=[220,480,740],bw=120,zeroY=g.y(0),paidY=g.y(paid),balanceY=g.y(balance),costTop=Math.min(paidY,balanceY),costH=Math.abs(balanceY-paidY),finalTop=Math.min(zeroY,balanceY),finalH=Math.abs(balanceY-zeroY);
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${g.grid}
+    <line class="svg-zero-line" x1="${g.left}" y1="${zeroY}" x2="${W-g.right}" y2="${zeroY}"></line>
+    <rect x="${centers[0]-bw/2}" y="${paidY}" width="${bw}" height="${zeroY-paidY}" class="svg-waterfall-positive"><title>Zálohy · ${svgSafe(money(paid))}</title></rect>
+    <line class="svg-waterfall-connector" x1="${centers[0]+bw/2}" y1="${paidY}" x2="${centers[1]-bw/2}" y2="${paidY}"></line>
+    <rect x="${centers[1]-bw/2}" y="${costTop}" width="${bw}" height="${costH}" class="svg-waterfall-negative"><title>Náklady · ${svgSafe(money(cost))}</title></rect>
+    <line class="svg-waterfall-connector" x1="${centers[1]+bw/2}" y1="${balanceY}" x2="${centers[2]-bw/2}" y2="${balanceY}"></line>
+    <rect x="${centers[2]-bw/2}" y="${finalTop}" width="${bw}" height="${finalH}" class="${balance>=0?'svg-waterfall-positive':'svg-waterfall-negative'}"><title>Zůstatek · ${svgSafe(money(balance))}</title></rect>
+    <text class="svg-category-label" x="${centers[0]}" y="${H-16}" text-anchor="middle">Zálohy</text>
+    <text class="svg-category-label" x="${centers[1]}" y="${H-16}" text-anchor="middle">Náklady</text>
+    <text class="svg-category-label" x="${centers[2]}" y="${H-16}" text-anchor="middle">Zůstatek</text>
+    <text class="svg-value-label svg-value-center" x="${centers[0]}" y="${Math.max(18,paidY-11)}" text-anchor="middle">${svgSafe(money(paid))}</text>
+    <text class="svg-value-label svg-value-center" x="${centers[1]}" y="${Math.max(18,costTop-11)}" text-anchor="middle">−${svgSafe(money(cost))}</text>
+    <text class="svg-value-label svg-value-center" x="${centers[2]}" y="${Math.max(18,finalTop-11)}" text-anchor="middle">${svgSafe(money(balance))}</text>`;
 }
 
 function selectedSvgMonths(months,billing){
