@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 UTILITIES = {
@@ -40,6 +40,53 @@ def days_in_month(month: str) -> int:
 def month_end(month: str) -> str:
     y, m = month_key(month)
     return f"{y:04d}-{m:02d}-{monthrange(y, m)[1]:02d}"
+
+
+def _safe_date(value: str) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def _covered_dates(start_text: str, end_text: str) -> list[date]:
+    """Return calendar days covered by an absolute-reading interval.
+
+    We model an interval as (previous_reading_date, current_reading_date].
+    That means 2026-09-30 -> 2026-10-01 is one day assigned to 2026-10-01.
+    If both readings are on the same date, treat it as one current-day sample.
+    """
+    end = _safe_date(end_text)
+    if end is None:
+        return []
+    start = _safe_date(start_text)
+    if start is None:
+        return [end]
+    if end < start:
+        return []
+    if end == start:
+        return [end]
+    return [start + timedelta(days=i) for i in range(1, (end - start).days + 1)]
+
+
+def _fixed_fraction_for_month(month: str, today: date | None = None) -> float:
+    today = today or date.today()
+    current = today.strftime("%Y-%m")
+    if month < current:
+        return 1.0
+    if month > current:
+        return 0.0
+    return today.day / days_in_month(month)
+
+
+def _profile_days_for_month(month: str, today: date | None = None) -> int:
+    today = today or date.today()
+    current = today.strftime("%Y-%m")
+    if month < current:
+        return days_in_month(month)
+    if month > current:
+        return 0
+    return today.day
 
 
 def _effective_for_date(rows: list[dict], target_date: str, defaults: dict) -> dict:
@@ -83,14 +130,25 @@ def billing_cycle(month: str, start_month: int) -> tuple[str, str]:
     return month_from_index(start_idx), month_from_index(start_idx + 11)
 
 
-def _appliance_month_usage(appliance: dict, cycles: int, month: str) -> dict[str, float]:
-    d = days_in_month(month)
+def _appliance_month_usage(
+    appliance: dict,
+    cycles: int,
+    month: str,
+    coverage_days: dict[str, int] | None = None,
+) -> dict[str, float]:
+    coverage_days = coverage_days or {}
+    fallback_days = _profile_days_for_month(month)
+
+    def passive_days(utility: str) -> int:
+        covered = int(coverage_days.get(utility, 0) or 0)
+        return covered if covered > 0 else fallback_days
+
     if appliance.get("kind") == "passive":
         return {
-            "electricity": float(appliance.get("electricity_kwh_per_day", 0) or 0) * d,
-            "cold_water": float(appliance.get("cold_water_l_per_day", 0) or 0) * d / 1000,
-            "hot_water": float(appliance.get("hot_water_l_per_day", 0) or 0) * d / 1000,
-            "gas": float(appliance.get("gas_m3_per_day", 0) or 0) * d,
+            "electricity": float(appliance.get("electricity_kwh_per_day", 0) or 0) * passive_days("electricity"),
+            "cold_water": float(appliance.get("cold_water_l_per_day", 0) or 0) * passive_days("cold_water") / 1000,
+            "hot_water": float(appliance.get("hot_water_l_per_day", 0) or 0) * passive_days("hot_water") / 1000,
+            "gas": float(appliance.get("gas_m3_per_day", 0) or 0) * passive_days("gas"),
             "heat": 0.0,
         }
     return {
@@ -101,17 +159,25 @@ def _appliance_month_usage(appliance: dict, cycles: int, month: str) -> dict[str
         "heat": 0.0,
     }
 
+def meter_monthly_usage(
+    data: dict,
+) -> tuple[dict[str, dict[str, float]], dict[str, list[dict]], dict[str, dict[str, int]]]:
+    """Allocate absolute-meter deltas across the calendar days they cover.
 
-def meter_monthly_usage(data: dict) -> tuple[dict[str, dict[str, float]], dict[str, list[dict]]]:
-    """Return monthly consumption by utility and detailed meter intervals."""
+    Consumption is distributed uniformly over (previous_date, current_date].
+    This avoids assigning an entire multi-day or cross-month delta to the month
+    of the final reading.
+    """
     meters = {m.get("id"): m for m in data.get("meters", [])}
     by_meter: dict[str, list[dict]] = {mid: [] for mid in meters}
     for r in data.get("meter_readings", []):
         mid = r.get("meter_id")
         if mid in by_meter and r.get("date"):
             by_meter[mid].append(r)
+
     totals: dict[str, dict[str, float]] = {}
     details: dict[str, list[dict]] = {}
+    coverage_sets: dict[str, dict[str, set[str]]] = {}
 
     for mid, meter in meters.items():
         rows = sorted(by_meter.get(mid, []), key=lambda r: (r.get("date", ""), r.get("id", "")))
@@ -120,45 +186,79 @@ def meter_monthly_usage(data: dict) -> tuple[dict[str, dict[str, float]], dict[s
         utility = meter.get("utility", "electricity")
         if utility not in UTILITIES:
             continue
+
         for row in rows:
             current = float(row.get("value", 0) or 0)
-            current_date = str(row.get("date", ""))
+            current_date = str(row.get("date", "") or "")
             delta = current - prev_value
-            valid = delta >= 0 and (not prev_date or current_date >= prev_date)
-            month = current_date[:7]
-            if len(month) == 7:
-                totals.setdefault(month, {u: 0.0 for u in UTILITIES})
-                details.setdefault(month, [])
-                if valid:
-                    totals[month][utility] += delta
-                details[month].append({
-                    "meter_id": mid,
-                    "meter_name": meter.get("name", "Měřidlo"),
-                    "utility": utility,
-                    "from_date": prev_date,
-                    "to_date": current_date,
-                    "from_value": prev_value,
-                    "to_value": current,
-                    "usage": delta if valid else 0.0,
-                    "valid": valid,
-                })
+            covered = _covered_dates(prev_date, current_date)
+            valid = delta >= 0 and bool(covered)
+            allocations: dict[str, dict[str, float]] = {}
+
+            if valid:
+                per_day = delta / len(covered)
+                for day in covered:
+                    month = day.strftime("%Y-%m")
+                    totals.setdefault(month, {u: 0.0 for u in UTILITIES})
+                    totals[month][utility] += per_day
+                    coverage_sets.setdefault(month, {u: set() for u in UTILITIES})
+                    coverage_sets[month][utility].add(day.isoformat())
+                    item = allocations.setdefault(month, {"days": 0, "usage": 0.0})
+                    item["days"] += 1
+                    item["usage"] += per_day
+
+                for month, allocation in allocations.items():
+                    details.setdefault(month, []).append({
+                        "meter_id": mid,
+                        "meter_name": meter.get("name", "Měřidlo"),
+                        "utility": utility,
+                        "from_date": prev_date,
+                        "to_date": current_date,
+                        "from_value": prev_value,
+                        "to_value": current,
+                        "interval_total_usage": delta,
+                        "usage": allocation["usage"],
+                        "allocated_days": int(allocation["days"]),
+                        "interval_days": len(covered),
+                        "valid": True,
+                        "estimated_split": len(allocations) > 1,
+                    })
+            else:
+                month = current_date[:7]
+                if len(month) == 7:
+                    totals.setdefault(month, {u: 0.0 for u in UTILITIES})
+                    details.setdefault(month, []).append({
+                        "meter_id": mid,
+                        "meter_name": meter.get("name", "Měřidlo"),
+                        "utility": utility,
+                        "from_date": prev_date,
+                        "to_date": current_date,
+                        "from_value": prev_value,
+                        "to_value": current,
+                        "interval_total_usage": 0.0,
+                        "usage": 0.0,
+                        "allocated_days": 0,
+                        "interval_days": 0,
+                        "valid": False,
+                        "estimated_split": False,
+                    })
+
             prev_value, prev_date = current, current_date
-    return totals, details
 
+    coverage = {
+        month: {u: len(days) for u, days in by_utility.items()}
+        for month, by_utility in coverage_sets.items()
+    }
+    return totals, details, coverage
 
-def heat_allocator_monthly_usage(data: dict) -> tuple[dict[str, float], dict[str, list[dict]]]:
-    """Return provisional monthly heat as the sum of all radiator allocator deltas.
-
-    Each radiator is evaluated independently from its base value and subsequent
-    cumulative readings. The valid delta is multiplied by its optional coefficient.
-    All adjusted deltas whose reading falls in the same month are then summed.
-
-    This is intentionally a provisional definition of total heat. The resulting
-    value is in allocation units, not physically verified GJ.
-    """
+def heat_allocator_monthly_usage(
+    data: dict,
+) -> tuple[dict[str, float], dict[str, list[dict]], dict[str, int]]:
+    """Allocate radiator-allocator deltas across the days they cover."""
     readings = data.get("heat_allocator_readings", [])
     monthly: dict[str, float] = {}
     details: dict[str, list[dict]] = {}
+    coverage_sets: dict[str, set[str]] = {}
 
     for allocator in data.get("heat_allocators", []):
         aid = allocator.get("id")
@@ -172,114 +272,206 @@ def heat_allocator_monthly_usage(data: dict) -> tuple[dict[str, float], dict[str
 
         for row in rows:
             current = float(row.get("value", 0) or 0)
-            current_date = str(row.get("date", ""))
+            current_date = str(row.get("date", "") or "")
             reset = bool(row.get("reset", False))
             raw_delta = current if reset else current - prev_value
-            valid = raw_delta >= 0 and (not prev_date or current_date >= prev_date)
-            adjusted = raw_delta * coeff if valid else 0.0
-            month = current_date[:7]
-            if len(month) == 7:
-                monthly.setdefault(month, 0.0)
-                details.setdefault(month, [])
-                if valid:
-                    monthly[month] += adjusted
-                details[month].append({
-                    "allocator_id": aid,
-                    "allocator_name": allocator.get("name", "Radiátor"),
-                    "room": allocator.get("room", ""),
-                    "from_date": prev_date,
-                    "to_date": current_date,
-                    "from_value": prev_value,
-                    "to_value": current,
-                    "raw_usage": raw_delta if valid else 0.0,
-                    "adjusted_usage": adjusted,
-                    "coefficient": coeff,
-                    "reset": reset,
-                    "valid": valid,
-                })
+            covered = _covered_dates(prev_date, current_date)
+            valid = raw_delta >= 0 and bool(covered)
+            adjusted_total = raw_delta * coeff if valid else 0.0
+
+            if valid:
+                per_day_adjusted = adjusted_total / len(covered)
+                per_day_raw = raw_delta / len(covered)
+                allocations: dict[str, dict[str, float]] = {}
+                for day in covered:
+                    month = day.strftime("%Y-%m")
+                    monthly[month] = monthly.get(month, 0.0) + per_day_adjusted
+                    coverage_sets.setdefault(month, set()).add(day.isoformat())
+                    item = allocations.setdefault(month, {"days": 0, "raw": 0.0, "adjusted": 0.0})
+                    item["days"] += 1
+                    item["raw"] += per_day_raw
+                    item["adjusted"] += per_day_adjusted
+
+                for month, allocation in allocations.items():
+                    details.setdefault(month, []).append({
+                        "allocator_id": aid,
+                        "allocator_name": allocator.get("name", "Radiátor"),
+                        "room": allocator.get("room", ""),
+                        "from_date": prev_date,
+                        "to_date": current_date,
+                        "from_value": prev_value,
+                        "to_value": current,
+                        "raw_usage": allocation["raw"],
+                        "adjusted_usage": allocation["adjusted"],
+                        "interval_raw_usage": raw_delta,
+                        "interval_adjusted_usage": adjusted_total,
+                        "allocated_days": int(allocation["days"]),
+                        "interval_days": len(covered),
+                        "coefficient": coeff,
+                        "reset": reset,
+                        "valid": True,
+                        "estimated_split": len(allocations) > 1,
+                    })
+            else:
+                month = current_date[:7]
+                if len(month) == 7:
+                    details.setdefault(month, []).append({
+                        "allocator_id": aid,
+                        "allocator_name": allocator.get("name", "Radiátor"),
+                        "room": allocator.get("room", ""),
+                        "from_date": prev_date,
+                        "to_date": current_date,
+                        "from_value": prev_value,
+                        "to_value": current,
+                        "raw_usage": 0.0,
+                        "adjusted_usage": 0.0,
+                        "interval_raw_usage": 0.0,
+                        "interval_adjusted_usage": 0.0,
+                        "allocated_days": 0,
+                        "interval_days": 0,
+                        "coefficient": coeff,
+                        "reset": reset,
+                        "valid": False,
+                        "estimated_split": False,
+                    })
+
             prev_value, prev_date = current, current_date
 
-    return monthly, details
-
+    coverage = {month: len(days) for month, days in coverage_sets.items()}
+    return monthly, details, coverage
 
 def compute_months(data: dict) -> list[dict[str, Any]]:
-    measured_by_month, meter_details = meter_monthly_usage(data)
-    radiator_heat_by_month, radiator_heat_details = heat_allocator_monthly_usage(data)
+    measured_by_month, meter_details, coverage_by_month = meter_monthly_usage(data)
+    radiator_heat_by_month, radiator_heat_details, heat_coverage = heat_allocator_monthly_usage(data)
 
-    # Provizorní pravidlo: pokud jsou pro daný měsíc odečty radiátorů, jejich
-    # součet definuje celkovou spotřebu tepla a má přednost před hlavním
-    # měřidlem tepla, aby se spotřeba nepočítala dvakrát.
     for month, heat_total in radiator_heat_by_month.items():
         measured_by_month.setdefault(month, {u: 0.0 for u in UTILITIES})
         measured_by_month[month]["heat"] = heat_total
+        coverage_by_month.setdefault(month, {u: 0 for u in UTILITIES})
+        coverage_by_month[month]["heat"] = heat_coverage.get(month, 0)
+
     appliances = data.get("appliances", [])
-    cycle_map = {(c.get("month"), c.get("appliance_id")): int(c.get("cycles", 0) or 0) for c in data.get("cycles", [])}
+    cycle_map = {
+        (c.get("month"), c.get("appliance_id")): int(c.get("cycles", 0) or 0)
+        for c in data.get("cycles", [])
+    }
     tariffs = data.get("tariffs", [])
     advances = data.get("advances", [])
-    months = sorted(measured_by_month)
+
+    month_set = set(measured_by_month)
+    if month_set:
+        latest_measured_month = max(month_set)
+        billing_start, _ = billing_cycle(
+            latest_measured_month,
+            int(data.get("settings", {}).get("billing_start_month", 1)),
+        )
+        for idx in range(month_index(billing_start), month_index(latest_measured_month) + 1):
+            month_set.add(month_from_index(idx))
+
+    months = sorted(month_set)
     out: list[dict[str, Any]] = []
+    today = date.today()
+    current_month = today.strftime("%Y-%m")
 
     for month in months:
-        measured = measured_by_month[month]
+        measured = measured_by_month.get(month, {u: 0.0 for u in UTILITIES}).copy()
+        coverage_days = coverage_by_month.get(month, {u: 0 for u in UTILITIES}).copy()
+
         estimated_passive = {u: 0.0 for u in UTILITIES}
         estimated_active = {u: 0.0 for u in UTILITIES}
         raw_appliance_breakdown = []
-        for a in appliances:
-            cyc = cycle_map.get((month, a.get("id")), 0)
-            usage = _appliance_month_usage(a, cyc, month)
-            target = estimated_passive if a.get("kind") == "passive" else estimated_active
-            for u in UTILITIES:
-                target[u] += usage[u]
+        for appliance in appliances:
+            cycles = cycle_map.get((month, appliance.get("id")), 0)
+            usage = _appliance_month_usage(appliance, cycles, month, coverage_days)
+            target = estimated_passive if appliance.get("kind") == "passive" else estimated_active
+            for utility in UTILITIES:
+                target[utility] += usage[utility]
             raw_appliance_breakdown.append({
-                "id": a.get("id"),
-                "name": a.get("name"),
-                "kind": a.get("kind"),
-                "cycles": cyc,
+                "id": appliance.get("id"),
+                "name": appliance.get("name"),
+                "kind": appliance.get("kind"),
+                "cycles": cycles,
                 "estimated_usage": usage,
             })
 
-        # Appliance profiles explain the measured meter delta. They never add
-        # consumption on top of it. If profiles overestimate the meter, scale
-        # the attribution proportionally and surface a diagnostic warning.
         attribution_scale = {}
         overestimated = {}
         passive = {}
         active = {}
         unassigned = {}
-        for u in UTILITIES:
-            estimated_total = estimated_passive[u] + estimated_active[u]
-            measured_total = max(0.0, float(measured.get(u, 0.0) or 0.0))
+        for utility in UTILITIES:
+            estimated_total = estimated_passive[utility] + estimated_active[utility]
+            measured_total = max(0.0, float(measured.get(utility, 0.0) or 0.0))
             scale = min(1.0, measured_total / estimated_total) if estimated_total > 0 else 1.0
-            attribution_scale[u] = scale
-            passive[u] = estimated_passive[u] * scale
-            active[u] = estimated_active[u] * scale
-            unassigned[u] = max(0.0, measured_total - passive[u] - active[u])
-            overestimated[u] = max(0.0, estimated_total - measured_total)
+            attribution_scale[utility] = scale
+            passive[utility] = estimated_passive[utility] * scale
+            active[utility] = estimated_active[utility] * scale
+            unassigned[utility] = max(0.0, measured_total - passive[utility] - active[utility])
+            overestimated[utility] = max(0.0, estimated_total - measured_total)
 
         appliance_breakdown = []
         for item in raw_appliance_breakdown:
             estimated_usage = item["estimated_usage"]
-            attributed_usage = {u: estimated_usage[u] * attribution_scale[u] for u in UTILITIES}
+            attributed_usage = {
+                utility: estimated_usage[utility] * attribution_scale[utility]
+                for utility in UTILITIES
+            }
             appliance_breakdown.append({
                 **item,
                 "usage": attributed_usage,
                 "attributed_usage": attributed_usage,
             })
+
         tariff = tariff_for_month(tariffs, month)
         advance_rule = advance_for_month(advances, month)
-        variable_costs = {u: measured[u] * float(tariff.get(UTILITIES[u]["price"], 0) or 0) for u in UTILITIES}
-        fixed_costs = {u: float(tariff.get(UTILITIES[u]["fixed"], 0) or 0) for u in UTILITIES}
-        utility_costs = {u: variable_costs[u] + fixed_costs[u] for u in UTILITIES}
+
+        variable_costs = {
+            utility: measured[utility] * float(tariff.get(UTILITIES[utility]["price"], 0) or 0)
+            for utility in UTILITIES
+        }
+        full_fixed_costs = {
+            utility: float(tariff.get(UTILITIES[utility]["fixed"], 0) or 0)
+            for utility in UTILITIES
+        }
+        fixed_fraction = _fixed_fraction_for_month(month, today)
+        fixed_costs = {
+            utility: full_fixed_costs[utility] * fixed_fraction
+            for utility in UTILITIES
+        }
+        utility_costs = {
+            utility: variable_costs[utility] + fixed_costs[utility]
+            for utility in UTILITIES
+        }
+
+        projected_variable_costs = variable_costs.copy()
+        if month == current_month:
+            for utility in UTILITIES:
+                covered = int(coverage_days.get(utility, 0) or 0)
+                if covered > 0:
+                    projected_variable_costs[utility] = (
+                        variable_costs[utility] * days_in_month(month) / covered
+                    )
+
+        projected_full_month_cost = (
+            sum(projected_variable_costs.values()) + sum(full_fixed_costs.values())
+        )
         fixed = sum(fixed_costs.values())
         total_cost = sum(utility_costs.values())
-        advance_parts = {u: float(advance_rule.get(f"{u}_monthly", 0) or 0) for u in UTILITIES}
+
+        advance_parts = {
+            utility: float(advance_rule.get(f"{utility}_monthly", 0) or 0)
+            for utility in UTILITIES
+        }
         advance_total = sum(advance_parts.values())
 
         out.append({
             "month": month,
             "measured": measured,
+            "coverage_days": coverage_days,
             "meter_intervals": meter_details.get(month, []),
-            "heat_source": "radiators" if month in radiator_heat_by_month else ("meter" if measured.get("heat", 0) else "none"),
+            "heat_source": "radiators" if month in radiator_heat_by_month else (
+                "meter" if measured.get("heat", 0) else "none"
+            ),
             "heat_allocator_intervals": radiator_heat_details.get(month, []),
             "passive": passive,
             "active": active,
@@ -293,15 +485,19 @@ def compute_months(data: dict) -> list[dict[str, Any]]:
             "advance_rule": advance_rule,
             "advance_parts": advance_parts,
             "variable_costs": variable_costs,
+            "projected_variable_costs": projected_variable_costs,
+            "full_fixed_costs": full_fixed_costs,
             "fixed_costs": fixed_costs,
             "utility_costs": utility_costs,
+            "fixed_fraction": fixed_fraction,
             "fixed_cost": fixed,
             "total_cost": total_cost,
+            "projected_full_month_cost": projected_full_month_cost,
+            "is_partial_month": month == current_month and fixed_fraction < 1.0,
             "advance": advance_total,
             "balance": advance_total - total_cost,
         })
     return out
-
 
 def add_alerts(months: list[dict], ratio_threshold: float = 0.30) -> None:
     for i, m in enumerate(months):
@@ -449,7 +645,10 @@ def dashboard(data: dict) -> dict[str, Any]:
     latest = months[-1] if months else None
 
     if latest:
-        start, end = billing_cycle(latest["month"], int(data.get("settings", {}).get("billing_start_month", 1)))
+        start, end = billing_cycle(
+            latest["month"],
+            int(data.get("settings", {}).get("billing_start_month", 1)),
+        )
         cycle_months = [m for m in months if start <= m["month"] <= end]
     else:
         start = end = None
@@ -458,30 +657,58 @@ def dashboard(data: dict) -> dict[str, Any]:
     actual_cost = sum(m["total_cost"] for m in cycle_months)
     paid = 0.0
     projected_paid_total = 0.0
+
     if latest and start and end:
         current_idx = month_index(latest["month"])
         start_idx = month_index(start)
         end_idx = month_index(end)
+
         for idx in range(start_idx, current_idx + 1):
             rule = advance_for_month(data.get("advances", []), month_from_index(idx))
             paid += sum(float(rule.get(f"{u}_monthly", 0) or 0) for u in UTILITIES)
+
         for idx in range(start_idx, end_idx + 1):
             rule = advance_for_month(data.get("advances", []), month_from_index(idx))
-            projected_paid_total += sum(float(rule.get(f"{u}_monthly", 0) or 0) for u in UTILITIES)
+            projected_paid_total += sum(
+                float(rule.get(f"{u}_monthly", 0) or 0) for u in UTILITIES
+            )
 
     current_balance = paid - actual_cost
-    projected_balance = current_balance
     projected_cost_total = actual_cost
-    if latest and end and cycle_months:
-        remaining = max(0, months_between(latest["month"], end))
-        avg_cost = actual_cost / len(cycle_months)
-        projected_cost_total += avg_cost * remaining
-        projected_balance = projected_paid_total - projected_cost_total
 
-    heat_advance_exists = any(float(a.get("heat_monthly", 0) or 0) > 0 for a in data.get("advances", []))
+    if latest and end and cycle_months:
+        current_month = date.today().strftime("%Y-%m")
+        completed = [m for m in cycle_months if m["month"] < current_month]
+        completed_cost = sum(m["total_cost"] for m in completed)
+
+        if latest["month"] == current_month:
+            current_projection = float(latest.get("projected_full_month_cost", latest["total_cost"]) or 0)
+            baseline_values = [m["total_cost"] for m in completed if m["total_cost"] > 0]
+            if current_projection > 0:
+                baseline_values.append(current_projection)
+            baseline = sum(baseline_values) / len(baseline_values) if baseline_values else 0.0
+            future_months = max(0, months_between(current_month, end))
+            projected_cost_total = completed_cost + current_projection + baseline * future_months
+        else:
+            baseline_values = [m["total_cost"] for m in cycle_months if m["total_cost"] > 0]
+            baseline = sum(baseline_values) / len(baseline_values) if baseline_values else 0.0
+            remaining = max(0, months_between(latest["month"], end))
+            projected_cost_total = actual_cost + baseline * remaining
+
+    projected_balance = projected_paid_total - projected_cost_total
+
+    heat_advance_exists = any(
+        float(row.get("heat_monthly", 0) or 0) > 0
+        for row in data.get("advances", [])
+    )
     has_radiator_heat = bool(data.get("heat_allocators"))
-    has_legacy_heat_meter = any(m.get("utility") == "heat" for m in data.get("meters", []))
-    heat_price_exists = any(float(t.get("heat_per_gj", 0) or 0) > 0 for t in data.get("tariffs", []))
+    has_legacy_heat_meter = any(
+        meter.get("utility") == "heat" for meter in data.get("meters", [])
+    )
+    heat_price_exists = any(
+        float(tariff.get("heat_per_gj", 0) or 0) > 0
+        for tariff in data.get("tariffs", [])
+    )
     heat_cost_trackable = (has_radiator_heat or has_legacy_heat_meter) and heat_price_exists
 
     return {
@@ -493,6 +720,7 @@ def dashboard(data: dict) -> dict[str, Any]:
             "heat_advance_without_cost": heat_advance_exists and not heat_cost_trackable,
             "heat_from_radiators": has_radiator_heat,
             "heat_definition_provisional": has_radiator_heat,
+            "current_month_prorated": bool(latest and latest.get("is_partial_month")),
         },
         "contract_review": contract_review_status(data),
         "billing": {
@@ -506,3 +734,4 @@ def dashboard(data: dict) -> dict[str, Any]:
             "projected_balance": projected_balance,
         },
     }
+

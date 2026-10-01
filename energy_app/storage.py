@@ -157,6 +157,17 @@ def migrate(data: dict) -> dict:
     return data
 
 
+def _has_user_data(data: dict) -> bool:
+    if not isinstance(data, dict):
+        return False
+    record_keys = (
+        "meters", "meter_readings", "appliances", "cycles", "tariffs",
+        "advances", "heat_allocators", "heat_allocator_readings",
+        "sensors", "sensor_readings",
+    )
+    return any(bool(data.get(key)) for key in record_keys)
+
+
 class JsonStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -164,6 +175,19 @@ class JsonStore:
         self._lock = threading.RLock()
         if not self.path.exists():
             self._write(DEFAULT_DATA)
+
+    @property
+    def backup_path(self) -> Path:
+        return self.path.with_name(self.path.stem + ".backup" + self.path.suffix)
+
+    def _read_raw(self, path: Path) -> dict | None:
+        try:
+            # utf-8-sig also accepts normal UTF-8 and safely handles a BOM.
+            with path.open("r", encoding="utf-8-sig") as f:
+                payload = json.load(f)
+            return payload if isinstance(payload, dict) else None
+        except (json.JSONDecodeError, OSError, UnicodeError):
+            return None
 
     def _write(self, data: dict) -> None:
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
@@ -175,21 +199,41 @@ class JsonStore:
 
     def load(self) -> dict:
         with self._lock:
-            try:
-                with self.path.open("r", encoding="utf-8") as f:
-                    raw = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                raw = deepcopy(DEFAULT_DATA)
-            data = migrate(raw)
-            if data != raw:
-                self._write(data)
-            return data
+            primary_raw = self._read_raw(self.path)
+            backup_raw = self._read_raw(self.backup_path) if self.backup_path.exists() else None
+
+            primary = migrate(primary_raw) if primary_raw is not None else None
+            backup = migrate(backup_raw) if backup_raw is not None else None
+
+            # Recovery rule:
+            # - corrupted/unreadable primary -> valid backup
+            # - default/empty primary -> backup containing actual user records
+            # This specifically protects the per-user AppData store from being
+            # silently replaced by an empty structure after a failed/old run.
+            use_backup = (
+                backup is not None
+                and _has_user_data(backup)
+                and (primary is None or not _has_user_data(primary))
+            )
+
+            if use_backup:
+                self._write(backup)
+                return backup
+
+            if primary is None:
+                primary = deepcopy(DEFAULT_DATA)
+                self._write(primary)
+                return primary
+
+            if primary_raw is None or primary != primary_raw:
+                self._write(primary)
+            return primary
 
     def save(self, data: dict) -> None:
         with self._lock:
             data = migrate(data)
             if self.path.exists():
-                backup = self.path.with_name(self.path.stem + ".backup" + self.path.suffix)
+                backup = self.backup_path
                 try:
                     shutil.copy2(self.path, backup)
                 except OSError:
