@@ -610,7 +610,7 @@ function selectedSvgMonths(months,billing){
 function setSvgAnalyticsRange(range){
   if(!['billing','12m'].includes(range))return;
   SVG_ANALYTICS_RANGE=range;
-  $('[data-analytics-range]').forEach(btn=>btn.classList.toggle('active',btn.dataset.analyticsRange===range));
+  $$('[data-analytics-range]').forEach(btn=>btn.classList.toggle('active',btn.dataset.analyticsRange===range));
   if(STATE) renderSvgAnalytics(STATE.dashboard?.months||[],STATE.dashboard?.billing||{});
 }
 
@@ -792,7 +792,7 @@ function renderCostSankey(months){
 async function connectionCheck(){
   try{await api('/health');if(document.visibilityState==='visible'&&STATE===null)await reloadState()}catch(_){}
 }
-$('[data-analytics-range]').forEach(btn=>btn.addEventListener('click',()=>setSvgAnalyticsRange(btn.dataset.analyticsRange)));
+$$('[data-analytics-range]').forEach(btn=>btn.addEventListener('click',()=>setSvgAnalyticsRange(btn.dataset.analyticsRange)));
 window.setInterval(connectionCheck,30000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reloadState().catch(()=>{})});
 window.addEventListener('focus',()=>connectionCheck());
