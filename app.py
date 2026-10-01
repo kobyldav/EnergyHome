@@ -543,6 +543,24 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         html = path.read_text(encoding="utf-8")
+
+        # Static assets change frequently during local upgrades. Edge app mode
+        # can otherwise keep an older broken app.js even though the backend and
+        # AppData are already on the new version. Use file mtimes as cache
+        # busters so every changed asset gets a new URL automatically.
+        static_dir = BASE_DIR / "static"
+        asset_paths = {
+            "/static/styles.css": static_dir / "styles.css",
+            "/static/i18n.js": static_dir / "i18n.js",
+            "/static/app.js": static_dir / "app.js",
+        }
+        for asset_url, asset_path in asset_paths.items():
+            try:
+                token = str(asset_path.stat().st_mtime_ns)
+            except OSError:
+                token = str(int(time.time()))
+            html = html.replace(asset_url, f"{asset_url}?v={token}")
+
         script = runtime_script()
         if "</body>" in html:
             html = html.replace("</body>", f"{script}\n</body>", 1)
@@ -585,6 +603,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", f"{mime}; charset=utf-8" if mime.startswith(("text/", "application/javascript")) else mime)
         self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(raw)
 
