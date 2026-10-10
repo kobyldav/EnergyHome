@@ -114,10 +114,12 @@ forecasts estimated from previously observed daily consumption. These numbers
 are estimates, not verified bank payment transactions.
 
 In **Individual Consumption Trends**, the **Billing Period** button becomes a
-**single selected month** with day-of-month x-axis (1 through the month's actual
-length), plus a month picker. Each date shows daily consumption calculated from
-absolute readings; multiple readings on a single calendar day are combined,
-and actual reading dates are marked. Days between readings show interpolated
+**single selected month** with a dynamically scaled day-of-month x-axis
+(up to the last observed reading, never into future days), plus a month picker. The curve shows **cumulative consumption since the beginning of the selected
+month**, not individual day-to-day deltas. Several readings on the same date
+are combined and reading dates are marked. The chart ends at the last
+observed/allocated day, and a medium without usable consumption data shows
+only an empty-state message (no axes). Days between readings show interpolated
 daily estimates, **not directly measured daily consumption**. The existing
 **Last 12 Months** graph remains a monthly overview. The Sankey chart retains
 its established billing-cycle and 12-month scopes.
