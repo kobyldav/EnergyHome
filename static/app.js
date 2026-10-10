@@ -2,6 +2,10 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 let STATE = null;
 let SVG_ANALYTICS_RANGE = 'billing';
+let FINANCE_RANGE_MODE = 'billing';
+let SELECTED_FINANCE = null;
+let financeRequestSerial = 0;
+const DAILY_MONTH_CACHE = new Map();
 const nf = new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:3});
 const moneyFmt = new Intl.NumberFormat('cs-CZ',{style:'currency',currency:'CZK',maximumFractionDigits:0});
 const utilityLabel = {electricity:'Elektřina',cold_water:'Studená voda',hot_water:'Teplá voda',gas:'Plyn',heat:'Teplo'};
@@ -37,7 +41,15 @@ async function api(url,options={}){
   }
   throw lastError;
 }
-async function reloadState(){ saveState('Načítám…'); STATE=await api('/api/state'); renderAll(); saveState('Připraveno'); }
+async function reloadState(){
+  saveState('Načítám…');
+  STATE=await api('/api/state');
+  DAILY_MONTH_CACHE.clear();
+  renderAll();
+  if(FINANCE_RANGE_MODE!=='billing') await refreshFinancePosition();
+  syncFormDirty=false;
+  saveState('Připraveno');
+}
 
 const titles={dashboard:'Dashboard',readings:'Měřidla a odečty',appliances:'Spotřebiče',heating:'Topení a radiátory',tariffs:'Ceníky',advances:'Zálohy',settings:'Nastavení'};
 function openTab(name){
@@ -78,11 +90,8 @@ function renderDashboard(){
   const hasHeat=(STATE.data.heat_allocators||[]).length>0||hasMeter('heat');
   $('#kpiHeat').textContent=m&&hasHeat?`${nf.format(m.measured.heat)} jedn.`:'—';
   $('#kpiCost').textContent=m?money(m.total_cost):'—'; $('#kpiMonth').textContent=m?`${m.month}${m.is_partial_month?' · průběžně':''}`:'bez dat';
-  const b=d.billing; $('#billingPeriod').textContent=b.start?`${b.start} → ${b.end}`:'—';
-  $('#currentBalance').textContent=b.start?money(b.current_balance):'—'; $('#projectedBalance').textContent=b.start?money(b.projected_balance):'—';
-  $('#paidTotal').textContent=b.start?money(b.paid):'—'; $('#actualCost').textContent=b.start?money(b.actual_cost):'—';
-  const balance=Number(b.projected_balance||0), max=Math.max(1000,Math.abs(balance)*1.2), pct=Math.min(50,Math.abs(balance)/max*50);
-  const fill=$('#thermoFill'); fill.style.width=`${pct}%`; fill.style.left=balance>=0?'50%':`${50-pct}%`; fill.style.background=balance>=0?'#1f8a5b':'#c94b4b';
+  const b=d.billing;
+  drawFinancialPosition(FINANCE_RANGE_MODE==='billing'?b:SELECTED_FINANCE);
   const alerts=[...(m?.alerts||[])];
   if(d.contract_review?.due) alerts.push({
     severity:'warning',
@@ -103,6 +112,94 @@ function renderDashboard(){
   drawExpenseTreeChart(d.months||[],b);
   drawWaterfall(b);
   renderSvgAnalytics(d.months||[],b);
+}
+
+
+function drawFinancialPosition(data) {
+  const b=data||{};
+  const exists=Boolean(b.start&&b.end);
+  const datesShort=value=>String(value||'').slice(0,10);
+  $('#billingPeriod').textContent=exists
+    ? datesShort(b.start)+' → '+datesShort(b.end) : '—';
+  $('#currentBalance').textContent=exists?money(b.current_balance):'—';
+  $('#projectedBalance').textContent=exists?money(b.projected_balance):'—';
+  $('#paidTotal').textContent=exists?money(b.paid):'—';
+  $('#actualCost').textContent=exists?money(b.actual_cost):'—';
+  $('#paidTotalLabel').textContent=FINANCE_RANGE_MODE==='billing'
+    ? 'Zaplacené zálohy' : 'Poměrné zálohy za období';
+  $('#financePeriodNote').textContent=FINANCE_RANGE_MODE==='billing'
+    ? 'Zúčtovací období podle nastavení domácnosti.'
+    : FINANCE_RANGE_MODE==='month'
+      ? 'Aktuální kalendářní měsíc. Zálohy a fixní náklady jsou poměrně rozpočítané na dny.'
+      : 'Vlastní kalendářní období. Zálohy i fixní náklady jsou poměrné; výhled je odhadem.';
+  const balance=Number(b.projected_balance||0);
+  const max=Math.max(1000,Math.abs(balance)*1.2);
+  const pct=Math.min(50,Math.abs(balance)/max*50);
+  const fill=$('#thermoFill');
+  fill.style.width=exists?(pct+'%'):'0%';
+  fill.style.left=balance>=0?'50%':((50-pct)+'%');
+  fill.style.background=balance>=0?'#1f8a5b':'#c94b4b';
+}
+function currentLocalIsoDate(){
+  const now=new Date();
+  return new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);
+}
+function currentCalendarMonthDates(){
+  const today=currentLocalIsoDate(), year=Number(today.slice(0,4)), month=Number(today.slice(5,7));
+  const end=new Date(Date.UTC(year,month,0)).getUTCDate();
+  return {start:today.slice(0,7)+'-01',end:today.slice(0,7)+'-'+String(end).padStart(2,'0')};
+}
+function setFinanceRange(range){
+  if(!['billing','month','custom'].includes(range))return;
+  FINANCE_RANGE_MODE=range;
+  $$('[data-finance-range]').forEach(btn=>btn.classList.toggle('active',btn.dataset.financeRange===range));
+  $('#financeCustomDates').classList.toggle('hidden',range!=='custom');
+  if(range==='custom'&&!$('#financeDateFrom').value){
+    const dates=currentCalendarMonthDates();
+    $('#financeDateFrom').value=dates.start;
+    $('#financeDateTo').value=dates.end;
+  }
+  if(range==='billing'){
+    financeRequestSerial++;
+    SELECTED_FINANCE=null;
+    if(STATE)drawFinancialPosition(STATE.dashboard.billing);
+    return;
+  }
+  SELECTED_FINANCE=null;
+  drawFinancialPosition(null);
+  refreshFinancePosition().catch(err=>toast(err.message));
+}
+async function refreshFinancePosition(){
+  if(FINANCE_RANGE_MODE==='billing'||!STATE)return;
+  const mode=FINANCE_RANGE_MODE;
+  const dates=mode==='month'?currentCalendarMonthDates():{
+    start:$('#financeDateFrom').value,
+    end:$('#financeDateTo').value
+  };
+  if(!dates.start||!dates.end)return;
+  if(dates.start>dates.end){
+    $('#financePeriodNote').textContent='Konec období nesmí být před začátkem.';
+    return;
+  }
+  const request=++financeRequestSerial;
+  try{
+    const url='/api/finance-position?start='+encodeURIComponent(dates.start)+'&end='+encodeURIComponent(dates.end);
+    const response=await api(url);
+    if(request!==financeRequestSerial||FINANCE_RANGE_MODE!==mode)return;
+    SELECTED_FINANCE=response;
+    drawFinancialPosition(response);
+  }catch(error){
+    if(request===financeRequestSerial){
+      drawFinancialPosition(null);
+      $('#financePeriodNote').textContent=error.message;
+    }
+  }
+}
+$$('[data-finance-range]').forEach(btn=>btn.addEventListener('click',()=>setFinanceRange(btn.dataset.financeRange)));
+for(const selector of ['#financeDateFrom','#financeDateTo']){
+  $(selector).addEventListener('change',()=>{
+    if(FINANCE_RANGE_MODE==='custom')refreshFinancePosition().catch(err=>toast(err.message));
+  });
 }
 
 function renderHeatAllocatorDashboard(summary){
@@ -408,15 +505,132 @@ function setSvgAnalyticsRange(range){
   if(!['billing','12m'].includes(range))return;
   SVG_ANALYTICS_RANGE=range;
   $$('[data-analytics-range]').forEach(btn=>btn.classList.toggle('active',btn.dataset.analyticsRange===range));
+  $('#mediaMonthPickerWrap').classList.toggle('hidden',range!=='billing');
+  $('#mediaChartExplanation').classList.toggle('hidden',range!=='billing');
   if(STATE) renderSvgAnalytics(STATE.dashboard?.months||[],STATE.dashboard?.billing||{});
 }
+$('#mediaMonthPicker').addEventListener('change',()=>{
+  if(SVG_ANALYTICS_RANGE==='billing'&&STATE)renderSvgAnalytics(STATE.dashboard.months,STATE.dashboard.billing);
+});
 
 function svgSafe(value){ return escapeHtml(String(value??'')); }
 
 function renderSvgAnalytics(months,billing){
   const selected=selectedSvgMonths(months,billing);
-  for(const utility of Object.keys(utilitySvgMeta)) renderMediaSvgChart(utility,selected);
+  if(SVG_ANALYTICS_RANGE==='billing'){
+    const input=$('#mediaMonthPicker');
+    if(!input.value)input.value=STATE?.dashboard?.latest?.month||currentLocalIsoDate().slice(0,7);
+    const month=input.value;
+    const fromCache=DAILY_MONTH_CACHE.get(month);
+    if(fromCache) {
+      for(const utility of Object.keys(utilitySvgMeta))renderDailyMediaSvgChart(utility,fromCache);
+    } else {
+      for(const utility of Object.keys(utilitySvgMeta)){
+        const svg=$('#mediaChart-'+utility);
+        if(svg)svgChartEmpty('#mediaChart-'+utility,'Načítám denní průběh…',760,240);
+      }
+      api('/api/consumption-days?month='+encodeURIComponent(month))
+        .then(response=>{
+          DAILY_MONTH_CACHE.set(month,response);
+          if(SVG_ANALYTICS_RANGE==='billing'&&$('#mediaMonthPicker').value===month){
+            for(const utility of Object.keys(utilitySvgMeta))renderDailyMediaSvgChart(utility,response);
+          }
+        })
+        .catch(error=>toast(error.message));
+    }
+  }else{
+    for(const utility of Object.keys(utilitySvgMeta))renderMediaSvgChart(utility,selected);
+  }
+  // Keep Sankey on the established billing-period or 12-month comparison.
   renderCostSankey(selected);
+}
+
+// Convert the daily meter deltas into a growing month-to-date total.
+// The chart ends at the last observed reading (never in the future). A
+// previously completed month can also show day allocations from an interval
+// closed by a later reading in the following month.
+function cumulativeMediaPoints(series,utility,todayIso=currentLocalIsoDate()){
+  const month=String(series?.month||'');
+  const all=(series?.days||[]).map(day=>({
+    day:Number(day.day),
+    date:String(day.date||''),
+    increment:Math.max(0,Number(day.measured?.[utility]||0)),
+    readings:Number(day.readings?.[utility]||0),
+    estimated:Boolean(day.estimated?.[utility])
+  })).filter(day=>day.date&&day.date<=todayIso&&day.day>=1);
+  const lastRead=all.reduce((last,row)=>row.readings>0?row.day:last,0);
+  // A reading in the following month may have allocated valid consumption
+  // to this completed month, even if there are no local reading markers.
+  const lastAllocated=month<todayIso.slice(0,7)
+    ? all.reduce((last,row)=>row.increment>0?row.day:last,0) : 0;
+  const lastDay=Math.max(lastRead,lastAllocated);
+  if(!lastDay)return {rows:[],total:0,count:0,lastDay:0};
+  let cumulative=0, count=0;
+  const rows=all.filter(row=>row.day<=lastDay).map(row=>{
+    cumulative+=row.increment;
+    count+=row.readings;
+    return {...row,value:cumulative};
+  });
+  return {rows,total:cumulative,count,lastDay};
+}
+
+function renderDailyMediaSvgChart(utility,series){
+  const svg=$('#mediaChart-'+utility),stat=$('#mediaStat-'+utility);
+  if(!svg||!stat)return;
+  const meta=utilitySvgMeta[utility];
+  const {rows,total,count,lastDay}=cumulativeMediaPoints(series,utility);
+  stat.innerHTML=rows.length
+    ? '<span><b>'+nf.format(total)+'</b> '+svgSafe(meta.unit)+'</span>'+
+      '<span>'+count+' odečtů</span><span>Kumulativně</span>'
+    : '<span>Bez odečtů</span>';
+  const W=760,H=240,left=68,right=20,top=26,bottom=44;
+  // As with Last 12 Months, data-less utilities show an empty placeholder,
+  // not a zero-to-31 grid suggesting that actual measurements exist.
+  if(!rows.length||total<=0){
+    svgChartEmpty('#mediaChart-'+utility,'Zatím není co zobrazit.',W,H);
+    return;
+  }
+  const plotW=W-left-right,plotH=H-top-bottom;
+  const max=total;
+  const scaleMax=Math.max(0.001,max*1.13);
+  // Fill the available width to the last observed day (e.g. 1–10 Oct),
+  // instead of rendering an empty stretch of days 11–31.
+  const x=day=>lastDay<=1?left+plotW/2:left+plotW*(day-1)/(lastDay-1);
+  const y=value=>top+plotH-plotH*value/scaleMax;
+  const grid=[];
+  for(let step=0;step<=4;step++){
+    const value=scaleMax*(1-step/4),gy=top+plotH*step/4;
+    grid.push('<line class="svg-grid-line" x1="'+left+'" y1="'+gy+'" x2="'+(W-right)+'" y2="'+gy+'"></line>');
+    grid.push('<text class="svg-axis-text" x="'+(left-8)+'" y="'+(gy+4)+'" text-anchor="end">'+svgSafe(nf.format(value))+'</text>');
+  }
+  // Dynamic label spacing keeps short periods legible without showing
+  // misleading labels for unobserved/future days.
+  const labelEvery=lastDay<=12?1:lastDay<=20?2:5;
+  const ticks=rows.map(row=>{
+    const xx=x(row.day);
+    const label=row.day===1||row.day===lastDay||row.day%labelEvery===0
+      ? '<text class="svg-axis-text svg-x-label" x="'+xx+'" y="'+(H-13)+'" text-anchor="middle">'+row.day+'</text>':'';
+    return '<line class="svg-day-tick" x1="'+xx+'" y1="'+(top+plotH)+'" x2="'+xx+'" y2="'+(top+plotH+5)+'"></line>'+label;
+  }).join('');
+  const graph=rows.map((row,i)=>(i===0?'M':'L')+' '+x(row.day).toFixed(2)+' '+y(row.value).toFixed(2)).join(' ');
+  const dayWidth=lastDay<=1?20:plotW/Math.max(1,lastDay-1);
+  const points=rows.map(row=>{
+    const xx=x(row.day),yy=y(row.value);
+    const tip=row.date+' · od začátku měsíce '+nf.format(row.value)+' '+meta.unit+
+      (row.estimated?' · odhad mezi odečty':'')+
+      (row.readings?' · '+row.readings+' odečet/odečty':' · bez odečtu');
+    const marker=row.readings
+      ? '<circle class="svg-reading-marker" cx="'+xx+'" cy="'+yy+'" r="'+(row.readings>1?6.5:5)+'" style="fill:'+meta.color+'"><title>'+svgSafe(tip)+'</title></circle>'
+      : '';
+    return marker+'<rect x="'+(xx-dayWidth*.46)+'" y="'+top+'" width="'+dayWidth*.92+
+      '" height="'+plotH+'" fill="transparent"><title>'+svgSafe(tip)+'</title></rect>';
+  }).join('');
+  svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+
+    grid.join('')+
+    '<path class="svg-media-line" d="'+graph+'" style="stroke:'+meta.color+'"></path>'+
+    ticks+points+
+    '<text class="svg-unit-label" x="'+left+'" y="15">'+svgSafe(meta.unit)+' CELKEM</text>'+
+    '<text class="svg-axis-text" x="'+(W-right)+'" y="'+(H-1)+'" text-anchor="end">Den v měsíci</text>';
 }
 
 function renderMediaSvgChart(utility,months){
@@ -586,15 +800,117 @@ function renderCostSankey(months){
   `;
 }
 
+// Shared household sync: only refresh the UI when no form has unsaved edits.
+let syncRevision = null;
+let syncFormDirty = false;
+document.addEventListener('input', event => {
+  if (event.target.closest('form') && !event.target.closest('#githubSyncForm')) syncFormDirty = true;
+});
+document.addEventListener('change', event => {
+  if (event.target.closest('form') && !event.target.closest('#githubSyncForm')) syncFormDirty = true;
+});
+
+function showGithubSyncStatus(st) {
+  const badge = $('#syncBadge');
+  const status = $('#githubSyncStatus');
+  const ready = Boolean(st.configured);
+  badge.textContent = !ready ? 'Vypnuto' : (st.conflicts?.length ? 'Konflikt' : st.last_error ? 'Chyba přenosu' : 'Aktivní');
+  const details = [];
+  if (ready) {
+    details.push('<strong>Úložiště:</strong> ' + escapeHtml(st.repo));
+    details.push('<strong>Poslední synchronizace:</strong> ' +
+      (st.last_synced ? escapeHtml(new Date(st.last_synced).toLocaleString('cs-CZ')) : 'Ještě neproběhla'));
+    details.push('<strong>Automatika:</strong> přibližně každých 30 sekund a po uložení');
+  } else {
+    details.push('GitHub je odpojený. Data zůstávají pouze na tomto počítači.');
+  }
+  if (st.last_error) details.push('<strong>Upozornění:</strong> ' + escapeHtml(st.last_error));
+  if (st.conflicts?.length) {
+    details.push('<strong>Konfliktní položky:</strong> ' + st.conflicts.slice(0, 8).map(escapeHtml).join(', '));
+    details.push('Zvolte řešení níže. Přednost dostane zvolená strana pouze u konfliktních položek; ostatní změny se sloučí.');
+  }
+  status.innerHTML = details.map(line => '<p>' + line + '</p>').join('');
+  $('#syncNowBtn').disabled = !ready || st.running;
+  $('#syncDisconnectBtn').disabled = !ready || st.running;
+  $('#syncLocalBtn').classList.toggle('hidden', !ready || !st.conflicts?.length);
+  $('#syncRemoteBtn').classList.toggle('hidden', !ready || !st.conflicts?.length);
+  if (ready && !$('#githubSyncForm').elements.repo.value)
+    $('#githubSyncForm').elements.repo.value = st.repo;
+}
+
+async function pollGithubSyncStatus() {
+  const st = await api('/api/sync/status');
+  showGithubSyncStatus(st);
+  if (syncRevision !== null && st.data_revision !== syncRevision && !syncFormDirty) {
+    await reloadState();
+  }
+  syncRevision = st.data_revision;
+  return st;
+}
+
+async function syncAction(preference = null) {
+  try {
+    const result = await api('/api/sync/run', {
+      method: 'POST', body: JSON.stringify({preference})
+    });
+    await pollGithubSyncStatus();
+    if (result.ok) {
+      await reloadState();
+      toast('GitHub synchronizace dokončena');
+    } else if (result.conflicts?.length) {
+      toast('Konflikt dat – zvolte způsob sloučení v Nastavení.');
+    }
+  } catch (error) {
+    toast(error.message);
+    await pollGithubSyncStatus().catch(() => {});
+  }
+}
+$('#githubSyncForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.target;
+  const repo = form.elements.repo.value.trim();
+  const token = form.elements.token.value.trim();
+  try {
+    await api('/api/sync/config', {
+      method: 'POST', body: JSON.stringify({repo, token})
+    });
+    form.elements.token.value = '';
+    await syncAction();
+  } catch (error) {
+    form.elements.token.value = '';
+    toast(error.message);
+  }
+});
+$('#syncNowBtn').addEventListener('click', () => syncAction());
+$('#syncLocalBtn').addEventListener('click', () => {
+  if (confirm('Použít moje hodnoty u konfliktních položek? Vzdálené konfliktní změny budou nahrazeny.'))
+    syncAction('local');
+});
+$('#syncRemoteBtn').addEventListener('click', () => {
+  if (confirm('Použít vzdálené hodnoty u konfliktních položek? Moje konfliktní změny budou nahrazeny.'))
+    syncAction('remote');
+});
+$('#syncDisconnectBtn').addEventListener('click', async () => {
+  if (!confirm('Odpojit GitHub? Lokální data zůstanou zachována.')) return;
+  try {
+    await api('/api/sync/disconnect', {method: 'POST', body: '{}'});
+    $('#githubSyncForm').elements.repo.value = '';
+    syncRevision = null;
+    await pollGithubSyncStatus();
+    toast('GitHub odpojen');
+  } catch (error) { toast(error.message); }
+});
+
 async function connectionCheck(){
   try{await api('/health');if(document.visibilityState==='visible'&&STATE===null)await reloadState()}catch(_){}
 }
 $$('[data-analytics-range]').forEach(btn=>btn.addEventListener('click',()=>setSvgAnalyticsRange(btn.dataset.analyticsRange)));
 window.setInterval(connectionCheck,30000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reloadState().catch(()=>{})});
+window.setInterval(() => { if (document.visibilityState === 'visible') pollGithubSyncStatus().catch(() => {}); },12000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible' && !syncFormDirty)reloadState().catch(()=>{});});
 window.addEventListener('focus',()=>connectionCheck());
 document.addEventListener('app-language-change',()=>STATE&&renderDashboard());
 
 window.addEventListener('resize',()=>STATE&&renderDashboard());
 renderKindFields(); setDateDefaults();
-reloadState().catch(err=>toast(err.message));
+reloadState().then(() => pollGithubSyncStatus()).catch(err=>toast(err.message));

@@ -15,14 +15,16 @@ from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, parse_qs
 from urllib.request import urlopen
 
 from energy_app.analytics import dashboard
+from energy_app.periods import financial_position, month_consumption
 from energy_app.storage import JsonStore
+from energy_app.github_sync import GitHubSync, SyncError
 
 APP_NAME = "Energy Home"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 RUNTIME_HEARTBEAT_INTERVAL = 3.0
 RUNTIME_HEARTBEAT_TIMEOUT = 300.0
 RUNTIME_SLEEP_GAP = 10.0
@@ -47,7 +49,16 @@ BUILD_ID = frontend_build_id()
 
 
 def get_user_data_dir() -> Path:
-    """Return a writable per-user directory for persistent Energy Home data."""
+    """Return a writable per-user directory for persistent Energy Home data.
+
+    ENERGYHOME_DATA_DIR is opt-in for isolated local testing. Production
+    installations continue using their original per-user data directory.
+    """
+    custom_dir = os.environ.get("ENERGYHOME_DATA_DIR", "").strip()
+    if custom_dir:
+        target = Path(custom_dir).expanduser().resolve()
+        target.mkdir(parents=True, exist_ok=True)
+        return target
     if os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
     else:
@@ -80,6 +91,7 @@ if not DATA_FILE.exists() and legacy_data_file.is_file():
         pass
 
 store = JsonStore(DATA_FILE)
+github_sync = GitHubSync(store, DATA_DIR)
 
 UTILITY_UNITS = {"electricity": "kWh", "cold_water": "m³", "hot_water": "m³", "gas": "m³", "heat": "GJ"}
 SENSOR_DEFAULT_UNITS = {"temperature": "°C", "humidity": "%", "custom": ""}
@@ -637,6 +649,23 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             data = store.load()
             return self._json({"data": data, "dashboard": dashboard(data)})
+        if path == "/api/consumption-days":
+            qs = parse_qs(urlparse(self.path).query)
+            try:
+                requested_month = qs.get("month", [""])[0]
+                return self._json(month_consumption(store.load(), requested_month))
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
+        if path == "/api/finance-position":
+            qs = parse_qs(urlparse(self.path).query)
+            try:
+                start = qs.get("start", [""])[0]
+                end = qs.get("end", [""])[0]
+                return self._json(financial_position(store.load(), start, end))
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
+        if path == "/api/sync/status":
+            return self._json(github_sync.status())
         if path == "/health":
             return self._json({
                 "ok": True,
@@ -659,7 +688,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         try:
+            if path.startswith("/api/sync/"):
+                # Block cross-origin form requests against this localhost service.
+                origin = self.headers.get("Origin")
+                host = self.headers.get("Host", "")
+                if origin and origin not in ("http://" + host, "https://" + host):
+                    return self._json({"error": "Nepovolený původ požadavku."}, 403)
+                if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
+                    return self._json({"error": "Vyžadován application/json."}, 415)
             payload = self._read_json()
+            if path == "/api/sync/config":
+                return self._json(github_sync.configure(str(payload.get("repo", "")), str(payload.get("token", ""))))
+            if path == "/api/sync/run":
+                return self._json(github_sync.sync(payload.get("preference")))
+            if path == "/api/sync/disconnect":
+                return self._json(github_sync.disconnect())
             routes = {
                 "/api/meters": save_meter,
                 "/api/meter-readings": save_meter_reading,
@@ -679,7 +722,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             self._json(fn(payload))
-        except (ValueError, json.JSONDecodeError) as exc:
+        except (ValueError, json.JSONDecodeError, SyncError) as exc:
             self._json({"error": str(exc)}, 400)
         except Exception as exc:
             self._json({"error": f"Interní chyba: {exc}"}, 500)
@@ -741,13 +784,20 @@ def main() -> None:
     if not args.no_browser:
         existing = find_running_instance()
         if existing:
+            print(f"Energy Home již běží na: {existing}", flush=True)
+            print(f"Databáze: {DATA_FILE}", flush=True)
             open_app_window(existing)
             return
 
     server = create_server(args.host, args.port)
+    github_sync.start()
     port = int(server.server_address[1])
     url = f"http://{args.host}:{port}"
     write_runtime_file(args.host, port)
+    print(f"Energy Home spuštěn: {url}", flush=True)
+    print(f"Databáze: {DATA_FILE}", flush=True)
+    if args.no_browser:
+        print("Otevřete uvedenou adresu ručně v prohlížeči (Ctrl+C = ukončit).", flush=True)
 
     if not args.no_browser:
         start_runtime_watchdog(server)

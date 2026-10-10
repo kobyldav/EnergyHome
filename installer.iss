@@ -1,5 +1,5 @@
 #define MyAppName "Energy Home"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "KobylDav"
 #define MyAppURL "https://github.com/kobyldav/EnergyHome"
 #define MyAppExeName "EnergyHome.exe"
@@ -34,7 +34,7 @@ WizardStyle=modern
 CloseApplications=force
 RestartApplications=no
 MinVersion=10.0
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion=1.0.1.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Energy Home installer
 VersionInfoProductName={#MyAppName}

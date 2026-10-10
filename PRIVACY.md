@@ -43,6 +43,12 @@ The current application is designed to use the loopback interface for this local
 
 Actions explicitly requested by the user may cause other applications or services to be opened, for example following an external link to GitHub. Those external services are governed by their own privacy policies.
 
+## Optional GitHub synchronization
+
+Users may explicitly enable synchronization in Settings. When enabled, the app uploads household records and downloads updates through GitHub's HTTPS API to a **separate private repository chosen by the user**. GitHub (and users granted access to that repository) can access the unencrypted JSON data. GitHub's own terms and privacy policy apply.
+
+Each user's fine-grained GitHub personal access token is transmitted directly to GitHub over HTTPS and stored locally encrypted with Windows DPAPI. The token is never part of the synchronized JSON file or GitHub source repository. The desktop app checks for changes about every 30 seconds and after local saves. Users can disable sync without deleting their local records; GitHub-hosted files and commit history must be deleted separately from GitHub if desired.
+
 ## Telemetry and analytics
 
 The current version of Energy Home does not include application telemetry, advertising trackers, or an Energy Home cloud analytics service.

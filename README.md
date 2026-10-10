@@ -77,6 +77,53 @@ This keeps consumption data and household energy payments in one place.
 
 Historical data can be used to compare consumption over time and identify changes in household energy usage.
 
+### Safe local test with existing household data
+
+Running `python app.py` normally reads the **same** local per-user database
+as the installed Windows Energy Home. Git does not contain personal data.
+For isolated developer tests, copy (do **not** move) your existing
+`%LOCALAPPDATA%\\EnergyHome\\energy_data.json` to another directory and
+set `ENERGYHOME_DATA_DIR` to that directory before running Python.
+This optional environment variable overrides the data directory only for
+that process; the installed application keeps its normal location.
+
+PowerShell example (from the test checkout):
+
+```powershell
+$source = Join-Path $env:LOCALAPPDATA 'EnergyHome\\energy_data.json'
+$testDir = Join-Path $env:TEMP 'EnergyHome-isolated-test'
+New-Item -ItemType Directory -Force -Path $testDir | Out-Null
+Copy-Item -LiteralPath $source -Destination (Join-Path $testDir 'energy_data.json') -ErrorAction Stop
+$env:ENERGYHOME_DATA_DIR = $testDir
+python app.py --no-browser --port 8765
+```
+
+Then open `http://127.0.0.1:8765`; `Ctrl+C` stops the test server.
+The source application prints its URL and actual database path. Disconnect
+GitHub sync or leave it unconfigured for purely local test runs. Never
+copy the private database into the Git working tree or commit it.
+
+### Flexible finance and day-by-day consumption
+
+The dashboard's **Financial Position** card can display the original household
+billing cycle (unchanged default), the current calendar month, or a manually
+selected start/end date. Custom dates are an analysis filter, **not** a change
+to stored household settings. In custom/current-month views, monthly advances
+and fixed fees are prorated by calendar day, and remaining variable costs are
+forecasts estimated from previously observed daily consumption. These numbers
+are estimates, not verified bank payment transactions.
+
+In **Individual Consumption Trends**, the **Billing Period** button becomes a
+**single selected month** with a dynamically scaled day-of-month x-axis
+(up to the last observed reading, never into future days), plus a month picker. The curve shows **cumulative consumption since the beginning of the selected
+month**, not individual day-to-day deltas. Several readings on the same date
+are combined and reading dates are marked. The chart ends at the last
+observed/allocated day, and a medium without usable consumption data shows
+only an empty-state message (no axes). Days between readings show interpolated
+daily estimates, **not directly measured daily consumption**. The existing
+**Last 12 Months** graph remains a monthly overview. The Sankey chart retains
+its established billing-cycle and 12-month scopes.
+
 ### Czech and English interface
 
 The application supports:
@@ -147,6 +194,30 @@ Energy Home is designed as a local-first application.
 Your household energy data is stored locally and is not intentionally uploaded to an external Energy Home server.
 
 ---
+
+## Optional GitHub sync for two computers
+
+Energy Home can optionally share one household dataset through the **GitHub Contents API**. It is not enabled by default. Local data remains available offline.
+
+**Set up:**
+
+1. Create a **new private repository** on GitHub, e.g. your-user/energyhome-private-data. **Do not** use the public EnergyHome source repository.
+2. Give the second partner access to this private repository (Settings → Collaborators).
+3. On each partner's GitHub account, create a **fine-grained personal access token** scoped *only* to the private data repository. Set **Contents: Read and write** (metadata read access is implicit). Keep the tokens separate.
+4. Open Energy Home → **Nastavení → GitHub · synchronizace partnerů** on each Windows computer, enter the data repo's owner/name and that computer's token, and click **Připojit**.
+5. Use **Synchronizovat nyní** to test; then changes normally sync approximately every 30 seconds and shortly after saves.
+
+The first device uploads its existing local data; an empty second device downloads that dataset. If both devices contain different records, the sync merges them by record identity and settings field. Concurrent incompatible edits or a delete-versus-edit conflict are **not silently overwritten**: the sync stops and shows conflict resolution actions. Resolve only after reviewing changes.
+
+**Security and limitations:**
+
+- Private GitHub repository is mandatory. Cloud data is stored as readable JSON for everyone with repository access and for GitHub; there is **no end-to-end encryption** of the remote file.
+- The token is protected at rest with **Windows DPAPI for the current Windows user** and is not returned by the local sync status API. Each Windows account has its own token. This sync setup is currently Windows-only.
+- No changes are uploaded without opting in. Disconnecting leaves local records untouched; it does not delete data from the GitHub repository.
+- The remote file is energyhome-data.json. GitHub commit history offers additional recovery points, but still keep independent backups.
+- This is **eventual sync, not real-time collaboration**. It requires internet access and GitHub API availability. When offline, local edits remain queued in the local data file until the next successful synchronization.
+- If several people edit constantly or the JSON file approaches 3 MB, use a dedicated database/backend instead of GitHub. GitHub is a versioned file hosting service, not a transactional multi-user database.
+- When conflicts occur, confirm carefully: selecting "my changes" or "remote changes" may discard conflicting values on the other side. Non-conflicting changes are preserved either way.
 
 ## How it works
 

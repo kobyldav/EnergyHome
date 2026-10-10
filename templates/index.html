@@ -45,7 +45,7 @@
       <div class="nav-group-label">Systém</div>
       <button class="nav-btn" data-tab="settings">Nastavení</button>
     </nav>
-    <div class="sidebar-foot"><span class="local-dot"></span> Pouze lokální data<small>127.0.0.1 · JSON</small></div>
+    <div class="sidebar-foot"><span class="local-dot"></span> Lokální data · volitelný GitHub<small>127.0.0.1 · JSON</small></div>
   </aside>
 
   <main class="content">
@@ -68,10 +68,22 @@
       <div class="grid two">
         <article class="card finance-card">
           <div class="card-head"><div><p class="eyebrow">ZÚČTOVÁNÍ</p><h2>Finanční pozice</h2></div><span id="billingPeriod" class="pill">—</span></div>
+          <div class="finance-period-controls">
+            <div class="finance-period-options" role="group" aria-label="Zobrazované finanční období">
+              <button type="button" class="btn secondary small finance-period-btn active" data-finance-range="billing">Zúčtovací období</button>
+              <button type="button" class="btn secondary small finance-period-btn" data-finance-range="month">Tento měsíc</button>
+              <button type="button" class="btn secondary small finance-period-btn" data-finance-range="custom">Vlastní období</button>
+            </div>
+            <div id="financeCustomDates" class="finance-custom-dates hidden">
+              <label>Od <input type="date" id="financeDateFrom" aria-label="Finance od"></label>
+              <label>Do <input type="date" id="financeDateTo" aria-label="Finance do"></label>
+            </div>
+            <small id="financePeriodNote" class="finance-period-note">Zúčtovací období podle nastavení domácnosti.</small>
+          </div>
           <div class="balance-row"><div><small>Aktuálně</small><strong id="currentBalance">—</strong></div><div><small>Predikce konce období</small><strong id="projectedBalance">—</strong></div></div>
           <div class="thermometer finance"><div id="thermoFill" class="thermo-fill"></div><div class="thermo-mid"></div></div>
           <div class="thermo-labels"><span>Nedoplatek</span><span>0</span><span>Přeplatek</span></div>
-          <div class="mini-grid"><div><small>Zaplacené zálohy</small><b id="paidTotal">—</b></div><div><small>Skutečné náklady</small><b id="actualCost">—</b></div></div>
+          <div class="mini-grid"><div><small id="paidTotalLabel">Zaplacené zálohy</small><b id="paidTotal">—</b></div><div><small>Skutečné náklady</small><b id="actualCost">—</b></div></div>
         </article>
         <article class="card">
           <div class="card-head"><div><p class="eyebrow">DETEKTIV</p><h2>Upozornění</h2></div></div>
@@ -102,8 +114,10 @@
           <div class="analytics-range" role="group" aria-label="Období grafů">
             <button class="btn secondary small analytics-range-btn active" type="button" data-analytics-range="billing">Zúčtovací období</button>
             <button class="btn secondary small analytics-range-btn" type="button" data-analytics-range="12m">Posledních 12 měsíců</button>
+            <label id="mediaMonthPickerWrap" class="media-month-picker">Měsíc <input type="month" id="mediaMonthPicker" aria-label="Měsíc pro denní vývoj spotřeby"></label>
           </div>
         </div>
+        <p class="media-chart-explanation" id="mediaChartExplanation">Kumulativní spotřeba od začátku vybraného měsíce. Graf končí posledním dostupným dnem odečtu, bez budoucích dnů. Mezi odečty je průběh odhadnutý rovnoměrným rozdělením; zvýrazněné body označují skutečné odečty.</p>
         <div class="media-svg-grid">
           <section class="media-svg-panel" data-utility-panel="electricity">
             <div class="media-svg-head"><div><span class="media-dot media-electricity"></span><h3>Elektřina</h3><small>kWh</small></div><div id="mediaStat-electricity" class="media-svg-stats"></div></div>
@@ -307,7 +321,34 @@
           <label>Kontrola smluv každých [měsíců]<input type="number" step="1" min="1" max="24" name="contract_review_interval_months" value="6"></label>
           <button class="btn primary full" type="submit">Uložit nastavení</button>
         </form>
-        <div class="notice"><strong>Data zůstávají v počítači.</strong><p>Soubor je uložen v <code>data/energy_data.json</code>. Při každém uložení vzniká také záložní kopie.</p></div>
+        <div class="notice"><strong>Lokální data i bez internetu.</strong><p>Soubor je uložen v <code>%LOCALAPPDATA%\EnergyHome\energy_data.json</code>. Při ukládání vzniká také místní záloha.</p></div>
+      </article>
+
+      <article class="card settings-card sync-card">
+        <div class="card-head">
+          <div><p class="eyebrow">VOLITELNÉ CLOUDOVÉ ZÁLOHOVÁNÍ</p><h2>GitHub · synchronizace partnerů</h2></div>
+          <span id="syncBadge" class="pill">Vypnuto</span>
+        </div>
+        <p class="help">Oba počítače mohou používat stejná data. Použijte <strong>samostatný soukromý (Private) GitHub repozitář</strong> – nikdy veřejný repozitář se zdrojovým kódem aplikace. Změny se slučují automaticky. Konflikty se nebudou potichu přepisovat.</p>
+        <form id="githubSyncForm" class="form-grid">
+          <label class="full">Soukromý datový repozitář
+            <input name="repo" type="text" autocomplete="off" placeholder="vlastnik/energyhome-private-data" required>
+          </label>
+          <label class="full">Fine-grained GitHub token (Contents: Read and write)
+            <input name="token" type="password" autocomplete="new-password" spellcheck="false" required>
+          </label>
+          <button class="btn primary full" type="submit">Připojit GitHub synchronizaci</button>
+        </form>
+        <p class="help">Token musí mít přístup jen k datovému repozitáři. Na Windows je uložen šifrovaně pomocí DPAPI. Oba partneři si nastaví přístup zvlášť. GitHub má historii změn, ale pro skutečné zálohy doporučujeme i pravidelný export mimo GitHub.</p>
+        <div class="sync-panel">
+          <div id="githubSyncStatus" aria-live="polite">Načítám stav synchronizace…</div>
+          <div class="sync-actions">
+            <button type="button" id="syncNowBtn" class="btn secondary">Synchronizovat nyní</button>
+            <button type="button" id="syncLocalBtn" class="btn secondary hidden">Vyřešit konflikt: moje změny</button>
+            <button type="button" id="syncRemoteBtn" class="btn secondary hidden">Vyřešit konflikt: vzdálené změny</button>
+            <button type="button" id="syncDisconnectBtn" class="btn danger">Odpojit GitHub</button>
+          </div>
+        </div>
       </article>
     </section>
   </main>
