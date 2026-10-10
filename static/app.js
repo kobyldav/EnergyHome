@@ -505,15 +505,103 @@ function setSvgAnalyticsRange(range){
   if(!['billing','12m'].includes(range))return;
   SVG_ANALYTICS_RANGE=range;
   $$('[data-analytics-range]').forEach(btn=>btn.classList.toggle('active',btn.dataset.analyticsRange===range));
+  $('#mediaMonthPickerWrap').classList.toggle('hidden',range!=='billing');
+  $('#mediaChartExplanation').classList.toggle('hidden',range!=='billing');
   if(STATE) renderSvgAnalytics(STATE.dashboard?.months||[],STATE.dashboard?.billing||{});
 }
+$('#mediaMonthPicker').addEventListener('change',()=>{
+  if(SVG_ANALYTICS_RANGE==='billing'&&STATE)renderSvgAnalytics(STATE.dashboard.months,STATE.dashboard.billing);
+});
 
 function svgSafe(value){ return escapeHtml(String(value??'')); }
 
 function renderSvgAnalytics(months,billing){
   const selected=selectedSvgMonths(months,billing);
-  for(const utility of Object.keys(utilitySvgMeta)) renderMediaSvgChart(utility,selected);
+  if(SVG_ANALYTICS_RANGE==='billing'){
+    const input=$('#mediaMonthPicker');
+    if(!input.value)input.value=STATE?.dashboard?.latest?.month||currentLocalIsoDate().slice(0,7);
+    const month=input.value;
+    const fromCache=DAILY_MONTH_CACHE.get(month);
+    if(fromCache) {
+      for(const utility of Object.keys(utilitySvgMeta))renderDailyMediaSvgChart(utility,fromCache);
+    } else {
+      for(const utility of Object.keys(utilitySvgMeta)){
+        const svg=$('#mediaChart-'+utility);
+        if(svg)svgChartEmpty('#mediaChart-'+utility,'Načítám denní průběh…',760,240);
+      }
+      api('/api/consumption-days?month='+encodeURIComponent(month))
+        .then(response=>{
+          DAILY_MONTH_CACHE.set(month,response);
+          if(SVG_ANALYTICS_RANGE==='billing'&&$('#mediaMonthPicker').value===month){
+            for(const utility of Object.keys(utilitySvgMeta))renderDailyMediaSvgChart(utility,response);
+          }
+        })
+        .catch(error=>toast(error.message));
+    }
+  }else{
+    for(const utility of Object.keys(utilitySvgMeta))renderMediaSvgChart(utility,selected);
+  }
+  // Keep Sankey on the established billing-period or 12-month comparison.
   renderCostSankey(selected);
+}
+
+function renderDailyMediaSvgChart(utility,series){
+  const svg=$('#mediaChart-'+utility),stat=$('#mediaStat-'+utility);
+  if(!svg||!stat)return;
+  const meta=utilitySvgMeta[utility];
+  const rows=(series.days||[]).map(row=>({
+    day:Number(row.day),
+    date:String(row.date),
+    value:Number(row.measured?.[utility]||0),
+    readings:Number(row.readings?.[utility]||0),
+    estimated:Boolean(row.estimated?.[utility])
+  }));
+  const total=rows.reduce((acc,row)=>acc+row.value,0);
+  const count=rows.reduce((acc,row)=>acc+row.readings,0);
+  stat.innerHTML='<span><b>'+nf.format(total)+'</b> '+svgSafe(meta.unit)+'</span>'+
+    '<span>'+count+' odečtů</span><span>Denní odhad</span>';
+  const W=760,H=240,left=68,right=20,top=26,bottom=44;
+  const plotW=W-left-right,plotH=H-top-bottom;
+  const max=Math.max(0,...rows.map(row=>row.value));
+  const scaleMax=Math.max(0.001,max*1.13);
+  const x=day=>left+plotW*(day-1)/Math.max(1,rows.length-1);
+  const y=value=>top+plotH-plotH*value/scaleMax;
+  const grid=[];
+  for(let step=0;step<=4;step++){
+    const value=scaleMax*(1-step/4),gy=top+plotH*step/4;
+    grid.push('<line class="svg-grid-line" x1="'+left+'" y1="'+gy+'" x2="'+(W-right)+'" y2="'+gy+'"></line>');
+    grid.push('<text class="svg-axis-text" x="'+(left-8)+'" y="'+(gy+4)+'" text-anchor="end">'+svgSafe(nf.format(value))+'</text>');
+  }
+  const ticks=rows.map(row=>{
+    const xx=x(row.day);
+    const label=row.day===1||row.day===rows.length||row.day%5===0
+      ? '<text class="svg-axis-text svg-x-label" x="'+xx+'" y="'+(H-13)+'" text-anchor="middle">'+row.day+'</text>':'';
+    return '<line class="svg-day-tick" x1="'+xx+'" y1="'+(top+plotH)+'" x2="'+xx+'" y2="'+(top+plotH+5)+'"></line>'+label;
+  }).join('');
+  const graph=rows.length
+    ? rows.map((row,i)=>(i===0?'M':'L')+' '+x(row.day).toFixed(2)+' '+y(row.value).toFixed(2)).join(' ')
+    : '';
+  const dayWidth=plotW/Math.max(1,rows.length);
+  const points=rows.map(row=>{
+    const xx=x(row.day),yy=y(row.value);
+    const tip=row.date+' · '+nf.format(row.value)+' '+meta.unit+
+      (row.estimated?' · odhad mezi odečty':'')+
+      (row.readings?' · '+row.readings+' odečet/odečty':' · bez odečtu');
+    const marker=row.readings
+      ? '<circle class="svg-reading-marker" cx="'+xx+'" cy="'+yy+'" r="'+(row.readings>1?6.5:5)+'" style="fill:'+meta.color+'"><title>'+svgSafe(tip)+'</title></circle>'
+      : '';
+    // A transparent hit area makes even zero-usage days accessible by mouse.
+    return marker+'<rect x="'+(xx-dayWidth*.48)+'" y="'+top+'" width="'+dayWidth*.96+
+      '" height="'+plotH+'" fill="transparent"><title>'+svgSafe(tip)+'</title></rect>';
+  }).join('');
+  const empty=!count&&!rows.some(row=>row.value>0)
+    ? '<text class="svg-empty-text" x="'+(W/2)+'" y="'+(H/2)+'" text-anchor="middle">Žádné odečty v tomto období</text>' : '';
+  svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+
+    grid.join('')+
+    (graph?'<path class="svg-media-line" d="'+graph+'" style="stroke:'+meta.color+'"></path>':'')+
+    ticks+points+empty+
+    '<text class="svg-unit-label" x="'+left+'" y="15">'+svgSafe(meta.unit)+' / den</text>'+
+    '<text class="svg-axis-text" x="'+(W-right)+'" y="'+(H-1)+'" text-anchor="end">Den v měsíci</text>';
 }
 
 function renderMediaSvgChart(utility,months){
