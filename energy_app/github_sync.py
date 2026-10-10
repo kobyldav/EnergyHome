@@ -283,6 +283,9 @@ class GitHubSync:
             if current is None or current["repo"] != repo:
                 self.base_file.unlink(missing_ok=True)
             _atomic_json(self.config_file, {"repo": repo, "secret": protected})
+            # Opted-in devices must not resurrect intentionally deleted records.
+            # This marker survives disconnection, keeping existing datasets safe.
+            self.store.enable_sync_history()
             self.last_error = ""
             self.conflicts = []
             self.wakeup.set()
