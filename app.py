@@ -24,7 +24,7 @@ from energy_app.storage import JsonStore
 from energy_app.github_sync import GitHubSync, SyncError
 
 APP_NAME = "Energy Home"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 RUNTIME_HEARTBEAT_INTERVAL = 3.0
 RUNTIME_HEARTBEAT_TIMEOUT = 300.0
 RUNTIME_SLEEP_GAP = 10.0
