@@ -10,7 +10,7 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import date, timedelta
 
-from energy_app.analytics import UTILITIES, _covered_dates, _safe_date, advance_for_month, tariff_for_month
+from energy_app.analytics import UTILITIES, _safe_date, advance_for_month, tariff_for_month
 
 
 def _parse_day(value: str) -> date:
@@ -62,6 +62,10 @@ def daily_usage(data: dict, start: date, end: date) -> dict[str, dict]:
             # Avoid generating years of irrelevant dates for very old intervals.
             first_day = _safe_date(previous_date)
             last_day = _safe_date(reading_day)
+            # Legacy imports can lack a baseline date; their first delta
+            # belongs on the reading day, like meter_monthly_usage().
+            if last_day and first_day is None:
+                first_day = last_day
             if last_day and first_day and last_day >= first_day and value >= previous_value:
                 count = max(1, (last_day - first_day).days)
                 interval_start = max(start, first_day + timedelta(days=1) if last_day > first_day else first_day)
@@ -72,7 +76,7 @@ def daily_usage(data: dict, start: date, end: date) -> dict[str, dict]:
                     while current <= interval_end:
                         day = result[current.isoformat()]
                         day["measured"][utility] += rate
-                        day["estimated"][utility] = count > 1
+                        day["estimated"][utility] = day["estimated"][utility] or count > 1
                         current += timedelta(days=1)
             previous_date, previous_value = reading_day, value
 
@@ -97,6 +101,8 @@ def daily_usage(data: dict, start: date, end: date) -> dict[str, dict]:
                 result[reading_day]["readings"]["heat"] += 1
             first_day = _safe_date(previous_date)
             last_day = _safe_date(reading_day)
+            if last_day and first_day is None:
+                first_day = last_day
             if first_day and last_day and last_day >= first_day and delta >= 0:
                 count = max(1, (last_day - first_day).days)
                 interval_start = max(start, first_day + timedelta(days=1) if last_day > first_day else first_day)
@@ -110,7 +116,7 @@ def daily_usage(data: dict, start: date, end: date) -> dict[str, dict]:
                         day = result[key]
                         day.setdefault("_radiator_heat", 0.0)
                         day["_radiator_heat"] += rate
-                        day["estimated"]["heat"] = count > 1
+                        day["estimated"]["heat"] = day["estimated"]["heat"] or count > 1
                         current += timedelta(days=1)
             previous_date, previous_value = reading_day, value
 
