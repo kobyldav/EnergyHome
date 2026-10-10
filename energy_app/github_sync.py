@@ -192,7 +192,13 @@ class GitHubContents:
         if record.get("type") != "file" or not record.get("sha"):
             raise SyncError("Cílová cesta na GitHubu není platný soubor.")
         try:
-            binary = base64.b64decode(record["content"], validate=False)
+            # The Contents API omits inline content for files above 1 MB.
+            # Fetch the Git blob instead without relaxing our 3 MB limit.
+            encoded = record.get("content")
+            if not encoded or record.get("encoding") == "none":
+                blob = self._request("GET", "/git/blobs/" + quote(record["sha"]))
+                encoded = blob["content"]
+            binary = base64.b64decode(encoded, validate=False)
             if len(binary) > MAX_REMOTE_BYTES:
                 raise SyncError("Soubor na GitHubu překračuje limit 3 MB.")
             value = json.loads(binary.decode("utf-8"))
