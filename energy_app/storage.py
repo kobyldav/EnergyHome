@@ -210,11 +210,9 @@ class JsonStore:
             # - default/empty primary -> backup containing actual user records
             # This specifically protects the per-user AppData store from being
             # silently replaced by an empty structure after a failed/old run.
-            use_backup = (
-                backup is not None
-                and _has_user_data(backup)
-                and (primary is None or not _has_user_data(primary))
-            )
+            # A valid empty primary can be intentional (e.g. deleting all
+            # records on another device). Only recover when primary is corrupt.
+            use_backup = backup is not None and primary is None
 
             if use_backup:
                 self._write(backup)
@@ -229,7 +227,7 @@ class JsonStore:
                 self._write(primary)
             return primary
 
-    def save(self, data: dict) -> None:
+    def save(self, data: dict, notify: bool = True) -> None:
         with self._lock:
             data = migrate(data)
             if self.path.exists():
@@ -239,3 +237,7 @@ class JsonStore:
                 except OSError:
                     pass
             self._write(data)
+            if notify:
+                callback = getattr(self, "on_save", None)
+                if callback:
+                    callback()
