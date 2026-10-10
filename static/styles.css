@@ -309,3 +309,28 @@ button,input,select{font:inherit}
   .sync-actions { flex-direction: column; }
   .sync-actions .btn { width: 100%; }
 }
+
+
+/* Optional finance views and true day-of-month detail charts */
+.finance-period-controls {display:grid;gap:10px;margin:-3px 0 18px;}
+.finance-period-options {display:flex;gap:6px;flex-wrap:wrap;}
+.finance-period-btn.active {background:var(--primary);border-color:var(--primary);color:#fff;}
+.finance-custom-dates {display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
+.finance-custom-dates label {display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:11px;font-weight:700;}
+.finance-custom-dates input {max-width:176px;border:1px solid var(--line);border-radius:6px;padding:8px;color:var(--text);background:#fff;font:inherit;}
+.finance-custom-dates.hidden {display:none;}
+.finance-period-note {display:block;color:var(--muted);line-height:1.55;}
+.media-month-picker {display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);font-weight:700;}
+.media-month-picker input {min-width:145px;padding:7px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--text);font-size:12px;}
+.media-month-picker.hidden {display:none;}
+.media-chart-explanation {margin:0 0 12px;color:var(--muted);font-size:11px;line-height:1.65;}
+.media-chart-explanation.hidden {display:none;}
+.svg-day-tick {stroke:#b6c3c9;stroke-width:1;}
+.svg-reading-marker {stroke:#fff;stroke-width:2.5;}
+@media(max-width:680px) {
+ .finance-period-options .btn {flex:1 1 auto;}
+ .finance-custom-dates label {flex:1;}
+ .finance-custom-dates input {max-width:100%;width:100%;}
+ .svg-analytics-head {flex-wrap:wrap;}
+ .analytics-range {width:100%;justify-content:flex-start;}
+}
