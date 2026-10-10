@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import tempfile
@@ -21,6 +22,51 @@ class CredentialAndGitHubApiTests(unittest.TestCase):
     def test_windows_dpapi_round_trip(self):
         secret = b"test-token-not-a-real-token"
         self.assertEqual(_dpapi(_dpapi(secret), decrypt=True), secret)
+
+    def test_sync_client_unprotects_secret_before_utf8_decoding(self):
+        """Previously, encrypted bytes were passed straight to UTF-8 decode."""
+        fake_token = "github_pat_example_not_real"
+        # Start with bytes that cannot be decoded as UTF-8.
+        encrypted = bytes([0x9d, 0xff]) + fake_token.encode("utf-8")
+        config = {
+            "repo": "example/private",
+            "secret": base64.b64encode(encrypted).decode("ascii"),
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            store = JsonStore(Path(folder) / "energy_data.json")
+            engine = GitHubSync(store, Path(folder))
+            def fake_dpapi(blob, decrypt=False):
+                self.assertTrue(decrypt, "Encrypted token must be decrypted before decoding")
+                self.assertEqual(blob, encrypted)
+                return fake_token.encode("utf-8")
+            with patch("energy_app.github_sync._dpapi", side_effect=fake_dpapi) as dpapi:
+                client = engine._client(config)
+            self.assertEqual(dpapi.call_count, 1)
+            self.assertEqual(client.token, fake_token)
+            self.assertEqual(client.repo, "example/private")
+
+    @unittest.skipUnless(os.name == "nt", "Windows DPAPI only")
+    def test_windows_sync_client_uses_real_dpapi_decryption(self):
+        """Exercise the actual Windows encrypt -> config -> decrypt path."""
+        fake_token = "github_pat_test_only_do_not_use"
+        encrypted = _dpapi(fake_token.encode("utf-8"))
+        with tempfile.TemporaryDirectory() as folder:
+            store = JsonStore(Path(folder) / "energy_data.json")
+            engine = GitHubSync(store, Path(folder))
+            client = engine._client({
+                "repo": "example/private",
+                "secret": base64.b64encode(encrypted).decode("ascii"),
+            })
+            self.assertEqual(client.token, fake_token)
+            self.assertEqual(client.repo, "example/private")
+
+    def test_corrupt_credential_has_actionable_error(self):
+        from energy_app.github_sync import SyncError
+        with tempfile.TemporaryDirectory() as folder:
+            store = JsonStore(Path(folder) / "energy_data.json")
+            engine = GitHubSync(store, Path(folder))
+            with self.assertRaisesRegex(SyncError, "GitHub token nelze přečíst"):
+                engine._client({"repo": "example/private", "secret": "not-base64%"})
 
     def test_git_blob_fallback_for_content_over_one_megabyte(self):
         from unittest.mock import patch as mock_patch
