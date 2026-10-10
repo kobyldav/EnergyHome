@@ -302,6 +302,8 @@ class GitHubSync:
             self.running = True
             try:
                 api = self._client(cfg)
+                # Refuse to continue if someone later makes the data repository public.
+                api.check_private()
                 # Lock across remote CAS: local writes cannot race with a pull/push.
                 with self.store._lock:
                     local = self.store.load()
