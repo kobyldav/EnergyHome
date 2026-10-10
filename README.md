@@ -148,6 +148,30 @@ Your household energy data is stored locally and is not intentionally uploaded t
 
 ---
 
+## Optional GitHub sync for two computers
+
+Energy Home can optionally share one household dataset through the **GitHub Contents API**. It is not enabled by default. Local data remains available offline.
+
+**Set up:**
+
+1. Create a **new private repository** on GitHub, e.g. your-user/energyhome-private-data. **Do not** use the public EnergyHome source repository.
+2. Give the second partner access to this private repository (Settings → Collaborators).
+3. On each partner's GitHub account, create a **fine-grained personal access token** scoped *only* to the private data repository. Set **Contents: Read and write** (metadata read access is implicit). Keep the tokens separate.
+4. Open Energy Home → **Nastavení → GitHub · synchronizace partnerů** on each Windows computer, enter the data repo's owner/name and that computer's token, and click **Připojit**.
+5. Use **Synchronizovat nyní** to test; then changes normally sync approximately every 30 seconds and shortly after saves.
+
+The first device uploads its existing local data; an empty second device downloads that dataset. If both devices contain different records, the sync merges them by record identity and settings field. Concurrent incompatible edits or a delete-versus-edit conflict are **not silently overwritten**: the sync stops and shows conflict resolution actions. Resolve only after reviewing changes.
+
+**Security and limitations:**
+
+- Private GitHub repository is mandatory. Cloud data is stored as readable JSON for everyone with repository access and for GitHub; there is **no end-to-end encryption** of the remote file.
+- The token is protected at rest with **Windows DPAPI for the current Windows user** and is not returned by the local sync status API. Each Windows account has its own token. This sync setup is currently Windows-only.
+- No changes are uploaded without opting in. Disconnecting leaves local records untouched; it does not delete data from the GitHub repository.
+- The remote file is energyhome-data.json. GitHub commit history offers additional recovery points, but still keep independent backups.
+- This is **eventual sync, not real-time collaboration**. It requires internet access and GitHub API availability. When offline, local edits remain queued in the local data file until the next successful synchronization.
+- If several people edit constantly or the JSON file approaches 3 MB, use a dedicated database/backend instead of GitHub. GitHub is a versioned file hosting service, not a transactional multi-user database.
+- When conflicts occur, confirm carefully: selecting "my changes" or "remote changes" may discard conflicting values on the other side. Non-conflicting changes are preserved either way.
+
 ## How it works
 
 Energy Home combines a Python backend with a web-based user interface.
