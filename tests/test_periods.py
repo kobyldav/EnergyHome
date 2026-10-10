@@ -40,6 +40,18 @@ class DailyConsumptionTests(unittest.TestCase):
         self.assertAlmostEqual(sum(row["measured"]["electricity"] for row in series["days"]), 130)
         self.assertAlmostEqual(series["days"][10]["measured"]["electricity"], 40)
 
+    def test_legacy_meter_without_base_date_uses_reading_day(self):
+        self.payload["meters"][0]["base_date"] = ""
+        self.payload["meter_readings"] = [{
+            "id": "first", "meter_id": "elec",
+            "date": "2026-10-15", "value": 27
+        }]
+        series = month_consumption(self.payload, "2026-10")
+        self.assertAlmostEqual(series["days"][14]["measured"]["electricity"], 27)
+        self.assertAlmostEqual(
+            sum(day["measured"]["electricity"] for day in series["days"]), 27
+        )
+
     def test_leap_february_and_invalid_month(self):
         series = month_consumption(self.payload, "2028-02")
         self.assertEqual(series["days_in_month"], 29)
