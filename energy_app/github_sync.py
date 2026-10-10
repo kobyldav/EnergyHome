@@ -104,12 +104,14 @@ def merge_documents(base: dict, local: dict, remote: dict, preference: str | Non
     """
     conflicts = []
     def merge(b, l, r, path):
+        if l is _MISSING and r is _MISSING:
+            return _MISSING
         if l == r:
             return deepcopy(l)
         if l == b:
-            return deepcopy(r)
+            return deepcopy(r) if r is not _MISSING else _MISSING
         if r == b:
-            return deepcopy(l)
+            return deepcopy(l) if l is not _MISSING else _MISSING
         if isinstance(l, dict) and isinstance(r, dict) and (isinstance(b, dict) or b is _MISSING):
             prior = {} if b is _MISSING else b
             result = {}
