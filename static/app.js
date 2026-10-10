@@ -152,7 +152,7 @@ function currentCalendarMonthDates(){
 function setFinanceRange(range){
   if(!['billing','month','custom'].includes(range))return;
   FINANCE_RANGE_MODE=range;
-  $('[data-finance-range]').forEach(btn=>btn.classList.toggle('active',btn.dataset.financeRange===range));
+  $$('[data-finance-range]').forEach(btn=>btn.classList.toggle('active',btn.dataset.financeRange===range));
   $('#financeCustomDates').classList.toggle('hidden',range!=='custom');
   if(range==='custom'&&!$('#financeDateFrom').value){
     const dates=currentCalendarMonthDates();
@@ -195,7 +195,7 @@ async function refreshFinancePosition(){
     }
   }
 }
-$('[data-finance-range]').forEach(btn=>btn.addEventListener('click',()=>setFinanceRange(btn.dataset.financeRange)));
+$$('[data-finance-range]').forEach(btn=>btn.addEventListener('click',()=>setFinanceRange(btn.dataset.financeRange)));
 for(const selector of ['#financeDateFrom','#financeDateTo']){
   $(selector).addEventListener('change',()=>{
     if(FINANCE_RANGE_MODE==='custom')refreshFinancePosition().catch(err=>toast(err.message));
