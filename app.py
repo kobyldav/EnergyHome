@@ -49,7 +49,16 @@ BUILD_ID = frontend_build_id()
 
 
 def get_user_data_dir() -> Path:
-    """Return a writable per-user directory for persistent Energy Home data."""
+    """Return a writable per-user directory for persistent Energy Home data.
+
+    ENERGYHOME_DATA_DIR is opt-in for isolated local testing. Production
+    installations continue using their original per-user data directory.
+    """
+    custom_dir = os.environ.get("ENERGYHOME_DATA_DIR", "").strip()
+    if custom_dir:
+        target = Path(custom_dir).expanduser().resolve()
+        target.mkdir(parents=True, exist_ok=True)
+        return target
     if os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
     else:
@@ -775,6 +784,8 @@ def main() -> None:
     if not args.no_browser:
         existing = find_running_instance()
         if existing:
+            print(f"Energy Home již běží na: {existing}", flush=True)
+            print(f"Databáze: {DATA_FILE}", flush=True)
             open_app_window(existing)
             return
 
@@ -783,6 +794,10 @@ def main() -> None:
     port = int(server.server_address[1])
     url = f"http://{args.host}:{port}"
     write_runtime_file(args.host, port)
+    print(f"Energy Home spuštěn: {url}", flush=True)
+    print(f"Databáze: {DATA_FILE}", flush=True)
+    if args.no_browser:
+        print("Otevřete uvedenou adresu ručně v prohlížeči (Ctrl+C = ukončit).", flush=True)
 
     if not args.no_browser:
         start_runtime_watchdog(server)
