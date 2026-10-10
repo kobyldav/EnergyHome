@@ -2,6 +2,10 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 let STATE = null;
 let SVG_ANALYTICS_RANGE = 'billing';
+let FINANCE_RANGE_MODE = 'billing';
+let SELECTED_FINANCE = null;
+let financeRequestSerial = 0;
+const DAILY_MONTH_CACHE = new Map();
 const nf = new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:3});
 const moneyFmt = new Intl.NumberFormat('cs-CZ',{style:'currency',currency:'CZK',maximumFractionDigits:0});
 const utilityLabel = {electricity:'Elektřina',cold_water:'Studená voda',hot_water:'Teplá voda',gas:'Plyn',heat:'Teplo'};
@@ -37,7 +41,15 @@ async function api(url,options={}){
   }
   throw lastError;
 }
-async function reloadState(){ saveState('Načítám…'); STATE=await api('/api/state'); renderAll(); syncFormDirty=false; saveState('Připraveno'); }
+async function reloadState(){
+  saveState('Načítám…');
+  STATE=await api('/api/state');
+  DAILY_MONTH_CACHE.clear();
+  renderAll();
+  if(FINANCE_RANGE_MODE!=='billing') await refreshFinancePosition();
+  syncFormDirty=false;
+  saveState('Připraveno');
+}
 
 const titles={dashboard:'Dashboard',readings:'Měřidla a odečty',appliances:'Spotřebiče',heating:'Topení a radiátory',tariffs:'Ceníky',advances:'Zálohy',settings:'Nastavení'};
 function openTab(name){
@@ -78,11 +90,8 @@ function renderDashboard(){
   const hasHeat=(STATE.data.heat_allocators||[]).length>0||hasMeter('heat');
   $('#kpiHeat').textContent=m&&hasHeat?`${nf.format(m.measured.heat)} jedn.`:'—';
   $('#kpiCost').textContent=m?money(m.total_cost):'—'; $('#kpiMonth').textContent=m?`${m.month}${m.is_partial_month?' · průběžně':''}`:'bez dat';
-  const b=d.billing; $('#billingPeriod').textContent=b.start?`${b.start} → ${b.end}`:'—';
-  $('#currentBalance').textContent=b.start?money(b.current_balance):'—'; $('#projectedBalance').textContent=b.start?money(b.projected_balance):'—';
-  $('#paidTotal').textContent=b.start?money(b.paid):'—'; $('#actualCost').textContent=b.start?money(b.actual_cost):'—';
-  const balance=Number(b.projected_balance||0), max=Math.max(1000,Math.abs(balance)*1.2), pct=Math.min(50,Math.abs(balance)/max*50);
-  const fill=$('#thermoFill'); fill.style.width=`${pct}%`; fill.style.left=balance>=0?'50%':`${50-pct}%`; fill.style.background=balance>=0?'#1f8a5b':'#c94b4b';
+  const b=d.billing;
+  drawFinancialPosition(FINANCE_RANGE_MODE==='billing'?b:SELECTED_FINANCE);
   const alerts=[...(m?.alerts||[])];
   if(d.contract_review?.due) alerts.push({
     severity:'warning',
@@ -103,6 +112,94 @@ function renderDashboard(){
   drawExpenseTreeChart(d.months||[],b);
   drawWaterfall(b);
   renderSvgAnalytics(d.months||[],b);
+}
+
+
+function drawFinancialPosition(data) {
+  const b=data||{};
+  const exists=Boolean(b.start&&b.end);
+  const datesShort=value=>String(value||'').slice(0,10);
+  $('#billingPeriod').textContent=exists
+    ? datesShort(b.start)+' → '+datesShort(b.end) : '—';
+  $('#currentBalance').textContent=exists?money(b.current_balance):'—';
+  $('#projectedBalance').textContent=exists?money(b.projected_balance):'—';
+  $('#paidTotal').textContent=exists?money(b.paid):'—';
+  $('#actualCost').textContent=exists?money(b.actual_cost):'—';
+  $('#paidTotalLabel').textContent=FINANCE_RANGE_MODE==='billing'
+    ? 'Zaplacené zálohy' : 'Poměrné zálohy za období';
+  $('#financePeriodNote').textContent=FINANCE_RANGE_MODE==='billing'
+    ? 'Zúčtovací období podle nastavení domácnosti.'
+    : FINANCE_RANGE_MODE==='month'
+      ? 'Aktuální kalendářní měsíc. Zálohy a fixní náklady jsou poměrně rozpočítané na dny.'
+      : 'Vlastní kalendářní období. Zálohy i fixní náklady jsou poměrné; výhled je odhadem.';
+  const balance=Number(b.projected_balance||0);
+  const max=Math.max(1000,Math.abs(balance)*1.2);
+  const pct=Math.min(50,Math.abs(balance)/max*50);
+  const fill=$('#thermoFill');
+  fill.style.width=exists?(pct+'%'):'0%';
+  fill.style.left=balance>=0?'50%':((50-pct)+'%');
+  fill.style.background=balance>=0?'#1f8a5b':'#c94b4b';
+}
+function currentLocalIsoDate(){
+  const now=new Date();
+  return new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);
+}
+function currentCalendarMonthDates(){
+  const today=currentLocalIsoDate(), year=Number(today.slice(0,4)), month=Number(today.slice(5,7));
+  const end=new Date(Date.UTC(year,month,0)).getUTCDate();
+  return {start:today.slice(0,7)+'-01',end:today.slice(0,7)+'-'+String(end).padStart(2,'0')};
+}
+function setFinanceRange(range){
+  if(!['billing','month','custom'].includes(range))return;
+  FINANCE_RANGE_MODE=range;
+  $('[data-finance-range]').forEach(btn=>btn.classList.toggle('active',btn.dataset.financeRange===range));
+  $('#financeCustomDates').classList.toggle('hidden',range!=='custom');
+  if(range==='custom'&&!$('#financeDateFrom').value){
+    const dates=currentCalendarMonthDates();
+    $('#financeDateFrom').value=dates.start;
+    $('#financeDateTo').value=dates.end;
+  }
+  if(range==='billing'){
+    financeRequestSerial++;
+    SELECTED_FINANCE=null;
+    if(STATE)drawFinancialPosition(STATE.dashboard.billing);
+    return;
+  }
+  SELECTED_FINANCE=null;
+  drawFinancialPosition(null);
+  refreshFinancePosition().catch(err=>toast(err.message));
+}
+async function refreshFinancePosition(){
+  if(FINANCE_RANGE_MODE==='billing'||!STATE)return;
+  const mode=FINANCE_RANGE_MODE;
+  const dates=mode==='month'?currentCalendarMonthDates():{
+    start:$('#financeDateFrom').value,
+    end:$('#financeDateTo').value
+  };
+  if(!dates.start||!dates.end)return;
+  if(dates.start>dates.end){
+    $('#financePeriodNote').textContent='Konec období nesmí být před začátkem.';
+    return;
+  }
+  const request=++financeRequestSerial;
+  try{
+    const url='/api/finance-position?start='+encodeURIComponent(dates.start)+'&end='+encodeURIComponent(dates.end);
+    const response=await api(url);
+    if(request!==financeRequestSerial||FINANCE_RANGE_MODE!==mode)return;
+    SELECTED_FINANCE=response;
+    drawFinancialPosition(response);
+  }catch(error){
+    if(request===financeRequestSerial){
+      drawFinancialPosition(null);
+      $('#financePeriodNote').textContent=error.message;
+    }
+  }
+}
+$('[data-finance-range]').forEach(btn=>btn.addEventListener('click',()=>setFinanceRange(btn.dataset.financeRange)));
+for(const selector of ['#financeDateFrom','#financeDateTo']){
+  $(selector).addEventListener('change',()=>{
+    if(FINANCE_RANGE_MODE==='custom')refreshFinancePosition().catch(err=>toast(err.message));
+  });
 }
 
 function renderHeatAllocatorDashboard(summary){
