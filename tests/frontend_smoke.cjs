@@ -76,7 +76,16 @@ for (const name of ["12m"]) {
   assert(listeners.some(listener => listener.name === name && listener.type === "click"),
     "Graph range button " + name + " is not connected");
 }
-Promise.resolve().then(() => {
-  assert(fetchCalls.includes("/api/state"), "Application did not begin loading persisted data");
-  console.log("Frontend initialization smoke test passed.");
-}).catch(error => { console.error(error); process.exitCode = 1; });
+setImmediate(() => {
+  try {
+    assert(fetchCalls.includes("/api/state"), "Application did not begin loading persisted data");
+    assert(elements.get("#meterList")?.innerHTML.includes("Smoke test meter"),
+      "Persisted meter records were not rendered in the UI");
+    assert.equal(elements.get("#saveState")?.textContent, "Připraveno",
+      "Dashboard rendering did not finish successfully");
+    console.log("Frontend initialization and persisted-data rendering smoke test passed.");
+  } catch (error) {
+    console.error(error);
+    process.exitCode = 1;
+  }
+});
