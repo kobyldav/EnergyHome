@@ -545,26 +545,57 @@ function renderSvgAnalytics(months,billing){
   renderCostSankey(selected);
 }
 
+// Convert the daily meter deltas into a growing month-to-date total.
+// The chart ends at the last observed reading (never in the future). A
+// previously completed month can also show day allocations from an interval
+// closed by a later reading in the following month.
+function cumulativeMediaPoints(series,utility,todayIso=currentLocalIsoDate()){
+  const month=String(series?.month||'');
+  const all=(series?.days||[]).map(day=>({
+    day:Number(day.day),
+    date:String(day.date||''),
+    increment:Math.max(0,Number(day.measured?.[utility]||0)),
+    readings:Number(day.readings?.[utility]||0),
+    estimated:Boolean(day.estimated?.[utility])
+  })).filter(day=>day.date&&day.date<=todayIso&&day.day>=1);
+  const lastRead=all.reduce((last,row)=>row.readings>0?row.day:last,0);
+  // A reading in the following month may have allocated valid consumption
+  // to this completed month, even if there are no local reading markers.
+  const lastAllocated=month<todayIso.slice(0,7)
+    ? all.reduce((last,row)=>row.increment>0?row.day:last,0) : 0;
+  const lastDay=Math.max(lastRead,lastAllocated);
+  if(!lastDay)return {rows:[],total:0,count:0,lastDay:0};
+  let cumulative=0, count=0;
+  const rows=all.filter(row=>row.day<=lastDay).map(row=>{
+    cumulative+=row.increment;
+    count+=row.readings;
+    return {...row,value:cumulative};
+  });
+  return {rows,total:cumulative,count,lastDay};
+}
+
 function renderDailyMediaSvgChart(utility,series){
   const svg=$('#mediaChart-'+utility),stat=$('#mediaStat-'+utility);
   if(!svg||!stat)return;
   const meta=utilitySvgMeta[utility];
-  const rows=(series.days||[]).map(row=>({
-    day:Number(row.day),
-    date:String(row.date),
-    value:Number(row.measured?.[utility]||0),
-    readings:Number(row.readings?.[utility]||0),
-    estimated:Boolean(row.estimated?.[utility])
-  }));
-  const total=rows.reduce((acc,row)=>acc+row.value,0);
-  const count=rows.reduce((acc,row)=>acc+row.readings,0);
-  stat.innerHTML='<span><b>'+nf.format(total)+'</b> '+svgSafe(meta.unit)+'</span>'+
-    '<span>'+count+' odečtů</span><span>Denní odhad</span>';
+  const {rows,total,count,lastDay}=cumulativeMediaPoints(series,utility);
+  stat.innerHTML=rows.length
+    ? '<span><b>'+nf.format(total)+'</b> '+svgSafe(meta.unit)+'</span>'+
+      '<span>'+count+' odečtů</span><span>Kumulativně</span>'
+    : '<span>Bez odečtů</span>';
   const W=760,H=240,left=68,right=20,top=26,bottom=44;
+  // As with Last 12 Months, data-less utilities show an empty placeholder,
+  // not a zero-to-31 grid suggesting that actual measurements exist.
+  if(!rows.length||total<=0){
+    svgChartEmpty('#mediaChart-'+utility,'Zatím není co zobrazit.',W,H);
+    return;
+  }
   const plotW=W-left-right,plotH=H-top-bottom;
-  const max=Math.max(0,...rows.map(row=>row.value));
+  const max=total;
   const scaleMax=Math.max(0.001,max*1.13);
-  const x=day=>left+plotW*(day-1)/Math.max(1,rows.length-1);
+  // Fill the available width to the last observed day (e.g. 1–10 Oct),
+  // instead of rendering an empty stretch of days 11–31.
+  const x=day=>lastDay<=1?left+plotW/2:left+plotW*(day-1)/(lastDay-1);
   const y=value=>top+plotH-plotH*value/scaleMax;
   const grid=[];
   for(let step=0;step<=4;step++){
@@ -572,35 +603,33 @@ function renderDailyMediaSvgChart(utility,series){
     grid.push('<line class="svg-grid-line" x1="'+left+'" y1="'+gy+'" x2="'+(W-right)+'" y2="'+gy+'"></line>');
     grid.push('<text class="svg-axis-text" x="'+(left-8)+'" y="'+(gy+4)+'" text-anchor="end">'+svgSafe(nf.format(value))+'</text>');
   }
+  // Dynamic label spacing keeps short periods legible without showing
+  // misleading labels for unobserved/future days.
+  const labelEvery=lastDay<=12?1:lastDay<=20?2:5;
   const ticks=rows.map(row=>{
     const xx=x(row.day);
-    const label=row.day===1||row.day===rows.length||row.day%5===0
+    const label=row.day===1||row.day===lastDay||row.day%labelEvery===0
       ? '<text class="svg-axis-text svg-x-label" x="'+xx+'" y="'+(H-13)+'" text-anchor="middle">'+row.day+'</text>':'';
     return '<line class="svg-day-tick" x1="'+xx+'" y1="'+(top+plotH)+'" x2="'+xx+'" y2="'+(top+plotH+5)+'"></line>'+label;
   }).join('');
-  const graph=rows.length
-    ? rows.map((row,i)=>(i===0?'M':'L')+' '+x(row.day).toFixed(2)+' '+y(row.value).toFixed(2)).join(' ')
-    : '';
-  const dayWidth=plotW/Math.max(1,rows.length);
+  const graph=rows.map((row,i)=>(i===0?'M':'L')+' '+x(row.day).toFixed(2)+' '+y(row.value).toFixed(2)).join(' ');
+  const dayWidth=lastDay<=1?20:plotW/Math.max(1,lastDay-1);
   const points=rows.map(row=>{
     const xx=x(row.day),yy=y(row.value);
-    const tip=row.date+' · '+nf.format(row.value)+' '+meta.unit+
+    const tip=row.date+' · od začátku měsíce '+nf.format(row.value)+' '+meta.unit+
       (row.estimated?' · odhad mezi odečty':'')+
       (row.readings?' · '+row.readings+' odečet/odečty':' · bez odečtu');
     const marker=row.readings
       ? '<circle class="svg-reading-marker" cx="'+xx+'" cy="'+yy+'" r="'+(row.readings>1?6.5:5)+'" style="fill:'+meta.color+'"><title>'+svgSafe(tip)+'</title></circle>'
       : '';
-    // A transparent hit area makes even zero-usage days accessible by mouse.
-    return marker+'<rect x="'+(xx-dayWidth*.48)+'" y="'+top+'" width="'+dayWidth*.96+
+    return marker+'<rect x="'+(xx-dayWidth*.46)+'" y="'+top+'" width="'+dayWidth*.92+
       '" height="'+plotH+'" fill="transparent"><title>'+svgSafe(tip)+'</title></rect>';
   }).join('');
-  const empty=!count&&!rows.some(row=>row.value>0)
-    ? '<text class="svg-empty-text" x="'+(W/2)+'" y="'+(H/2)+'" text-anchor="middle">Žádné odečty v tomto období</text>' : '';
   svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+
     grid.join('')+
-    (graph?'<path class="svg-media-line" d="'+graph+'" style="stroke:'+meta.color+'"></path>':'')+
-    ticks+points+empty+
-    '<text class="svg-unit-label" x="'+left+'" y="15">'+svgSafe(meta.unit)+' / den</text>'+
+    '<path class="svg-media-line" d="'+graph+'" style="stroke:'+meta.color+'"></path>'+
+    ticks+points+
+    '<text class="svg-unit-label" x="'+left+'" y="15">'+svgSafe(meta.unit)+' CELKEM</text>'+
     '<text class="svg-axis-text" x="'+(W-right)+'" y="'+(H-1)+'" text-anchor="end">Den v měsíci</text>';
 }
 
