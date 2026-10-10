@@ -250,7 +250,18 @@ class GitHubSync:
         return None
 
     def _client(self, cfg):
-        token = _dpapi(base64.b64decode(cfg["secret"])).decode("utf-8")
+        # The saved secret contains encrypted Windows DPAPI bytes, not UTF-8
+        # text. Unprotect them in the same user's Windows account first.
+        try:
+            protected = base64.b64decode(cfg["secret"], validate=True)
+            token = _dpapi(protected, decrypt=True).decode("utf-8")
+            if not token:
+                raise ValueError("empty token")
+        except (ValueError, UnicodeError, KeyError, TypeError) as error:
+            raise SyncError(
+                "Uložený GitHub token nelze přečíst. "
+                "Zadejte jej znovu v nastavení synchronizace."
+            ) from error
         return GitHubContents(cfg["repo"], token)
 
     def status(self):
