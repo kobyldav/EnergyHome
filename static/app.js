@@ -37,7 +37,7 @@ async function api(url,options={}){
   }
   throw lastError;
 }
-async function reloadState(){ saveState('Načítám…'); STATE=await api('/api/state'); renderAll(); saveState('Připraveno'); }
+async function reloadState(){ saveState('Načítám…'); STATE=await api('/api/state'); renderAll(); syncFormDirty=false; saveState('Připraveno'); }
 
 const titles={dashboard:'Dashboard',readings:'Měřidla a odečty',appliances:'Spotřebiče',heating:'Topení a radiátory',tariffs:'Ceníky',advances:'Zálohy',settings:'Nastavení'};
 function openTab(name){
@@ -586,15 +586,117 @@ function renderCostSankey(months){
   `;
 }
 
+// Shared household sync: only refresh the UI when no form has unsaved edits.
+let syncRevision = null;
+let syncFormDirty = false;
+document.addEventListener('input', event => {
+  if (event.target.closest('form') && !event.target.closest('#githubSyncForm')) syncFormDirty = true;
+});
+document.addEventListener('change', event => {
+  if (event.target.closest('form') && !event.target.closest('#githubSyncForm')) syncFormDirty = true;
+});
+
+function showGithubSyncStatus(st) {
+  const badge = $('#syncBadge');
+  const status = $('#githubSyncStatus');
+  const ready = Boolean(st.configured);
+  badge.textContent = !ready ? 'Vypnuto' : (st.conflicts?.length ? 'Konflikt' : st.last_error ? 'Chyba přenosu' : 'Aktivní');
+  const details = [];
+  if (ready) {
+    details.push('<strong>Úložiště:</strong> ' + escapeHtml(st.repo));
+    details.push('<strong>Poslední synchronizace:</strong> ' +
+      (st.last_synced ? escapeHtml(new Date(st.last_synced).toLocaleString('cs-CZ')) : 'Ještě neproběhla'));
+    details.push('<strong>Automatika:</strong> přibližně každých 30 sekund a po uložení');
+  } else {
+    details.push('GitHub je odpojený. Data zůstávají pouze na tomto počítači.');
+  }
+  if (st.last_error) details.push('<strong>Upozornění:</strong> ' + escapeHtml(st.last_error));
+  if (st.conflicts?.length) {
+    details.push('<strong>Konfliktní položky:</strong> ' + st.conflicts.slice(0, 8).map(escapeHtml).join(', '));
+    details.push('Zvolte řešení níže. Přednost dostane zvolená strana pouze u konfliktních položek; ostatní změny se sloučí.');
+  }
+  status.innerHTML = details.map(line => '<p>' + line + '</p>').join('');
+  $('#syncNowBtn').disabled = !ready || st.running;
+  $('#syncDisconnectBtn').disabled = !ready || st.running;
+  $('#syncLocalBtn').classList.toggle('hidden', !ready || !st.conflicts?.length);
+  $('#syncRemoteBtn').classList.toggle('hidden', !ready || !st.conflicts?.length);
+  if (ready && !$('#githubSyncForm').elements.repo.value)
+    $('#githubSyncForm').elements.repo.value = st.repo;
+}
+
+async function pollGithubSyncStatus() {
+  const st = await api('/api/sync/status');
+  showGithubSyncStatus(st);
+  if (syncRevision !== null && st.data_revision !== syncRevision && !syncFormDirty) {
+    await reloadState();
+  }
+  syncRevision = st.data_revision;
+  return st;
+}
+
+async function syncAction(preference = null) {
+  try {
+    const result = await api('/api/sync/run', {
+      method: 'POST', body: JSON.stringify({preference})
+    });
+    await pollGithubSyncStatus();
+    if (result.ok) {
+      await reloadState();
+      toast('GitHub synchronizace dokončena');
+    } else if (result.conflicts?.length) {
+      toast('Konflikt dat – zvolte způsob sloučení v Nastavení.');
+    }
+  } catch (error) {
+    toast(error.message);
+    await pollGithubSyncStatus().catch(() => {});
+  }
+}
+$('#githubSyncForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.target;
+  const repo = form.elements.repo.value.trim();
+  const token = form.elements.token.value.trim();
+  try {
+    await api('/api/sync/config', {
+      method: 'POST', body: JSON.stringify({repo, token})
+    });
+    form.elements.token.value = '';
+    await syncAction();
+  } catch (error) {
+    form.elements.token.value = '';
+    toast(error.message);
+  }
+});
+$('#syncNowBtn').addEventListener('click', () => syncAction());
+$('#syncLocalBtn').addEventListener('click', () => {
+  if (confirm('Použít moje hodnoty u konfliktních položek? Vzdálené konfliktní změny budou nahrazeny.'))
+    syncAction('local');
+});
+$('#syncRemoteBtn').addEventListener('click', () => {
+  if (confirm('Použít vzdálené hodnoty u konfliktních položek? Moje konfliktní změny budou nahrazeny.'))
+    syncAction('remote');
+});
+$('#syncDisconnectBtn').addEventListener('click', async () => {
+  if (!confirm('Odpojit GitHub? Lokální data zůstanou zachována.')) return;
+  try {
+    await api('/api/sync/disconnect', {method: 'POST', body: '{}'});
+    $('#githubSyncForm').elements.repo.value = '';
+    syncRevision = null;
+    await pollGithubSyncStatus();
+    toast('GitHub odpojen');
+  } catch (error) { toast(error.message); }
+});
+
 async function connectionCheck(){
   try{await api('/health');if(document.visibilityState==='visible'&&STATE===null)await reloadState()}catch(_){}
 }
 $$('[data-analytics-range]').forEach(btn=>btn.addEventListener('click',()=>setSvgAnalyticsRange(btn.dataset.analyticsRange)));
 window.setInterval(connectionCheck,30000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reloadState().catch(()=>{})});
+window.setInterval(() => { if (document.visibilityState === 'visible') pollGithubSyncStatus().catch(() => {}); },12000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible' && !syncFormDirty)reloadState().catch(()=>{});});
 window.addEventListener('focus',()=>connectionCheck());
 document.addEventListener('app-language-change',()=>STATE&&renderDashboard());
 
 window.addEventListener('resize',()=>STATE&&renderDashboard());
 renderKindFields(); setDateDefaults();
-reloadState().catch(err=>toast(err.message));
+reloadState().then(() => pollGithubSyncStatus()).catch(err=>toast(err.message));
