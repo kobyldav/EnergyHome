@@ -93,7 +93,9 @@ class FinancialPeriodTests(unittest.TestCase):
         self.assertAlmostEqual(result["paid"], 10 * 620 / 31)
         self.assertAlmostEqual(result["projected_paid_total"], 620)
         self.assertAlmostEqual(result["actual_cost"], 90 * 2 + 10 * 310 / 31)
-        self.assertAlmostEqual(result["projected_cost_total"], 31 * 10 * 2 + 310)
+        # Base date is Oct 1; the first measured interval covers Oct 2–10.
+        # Forecast applies 10 units/day only to the remaining 21 days.
+        self.assertAlmostEqual(result["projected_cost_total"], 30 * 10 * 2 + 310)
 
     def test_cross_month_custom_period_and_date_validation(self):
         result = financial_position(self.payload, "2026-09-30", "2026-10-02", date(2026, 10, 10))
