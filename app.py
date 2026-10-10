@@ -20,6 +20,7 @@ from urllib.request import urlopen
 
 from energy_app.analytics import dashboard
 from energy_app.storage import JsonStore
+from energy_app.github_sync import GitHubSync, SyncError
 
 APP_NAME = "Energy Home"
 APP_VERSION = "1.0.0"
@@ -80,6 +81,7 @@ if not DATA_FILE.exists() and legacy_data_file.is_file():
         pass
 
 store = JsonStore(DATA_FILE)
+github_sync = GitHubSync(store, DATA_DIR)
 
 UTILITY_UNITS = {"electricity": "kWh", "cold_water": "m³", "hot_water": "m³", "gas": "m³", "heat": "GJ"}
 SENSOR_DEFAULT_UNITS = {"temperature": "°C", "humidity": "%", "custom": ""}
@@ -637,6 +639,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             data = store.load()
             return self._json({"data": data, "dashboard": dashboard(data)})
+        if path == "/api/sync/status":
+            return self._json(github_sync.status())
         if path == "/health":
             return self._json({
                 "ok": True,
@@ -659,7 +663,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         try:
+            if path.startswith("/api/sync/"):
+                # Block cross-origin form requests against this localhost service.
+                origin = self.headers.get("Origin")
+                host = self.headers.get("Host", "")
+                if origin and origin not in ("http://" + host, "https://" + host):
+                    return self._json({"error": "Nepovolený původ požadavku."}, 403)
+                if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
+                    return self._json({"error": "Vyžadován application/json."}, 415)
             payload = self._read_json()
+            if path == "/api/sync/config":
+                return self._json(github_sync.configure(str(payload.get("repo", "")), str(payload.get("token", ""))))
+            if path == "/api/sync/run":
+                return self._json(github_sync.sync(payload.get("preference")))
+            if path == "/api/sync/disconnect":
+                return self._json(github_sync.disconnect())
             routes = {
                 "/api/meters": save_meter,
                 "/api/meter-readings": save_meter_reading,
@@ -679,7 +697,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             self._json(fn(payload))
-        except (ValueError, json.JSONDecodeError) as exc:
+        except (ValueError, json.JSONDecodeError, SyncError) as exc:
             self._json({"error": str(exc)}, 400)
         except Exception as exc:
             self._json({"error": f"Interní chyba: {exc}"}, 500)
@@ -745,6 +763,7 @@ def main() -> None:
             return
 
     server = create_server(args.host, args.port)
+    github_sync.start()
     port = int(server.server_address[1])
     url = f"http://{args.host}:{port}"
     write_runtime_file(args.host, port)
