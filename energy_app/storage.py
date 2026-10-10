@@ -173,6 +173,10 @@ class JsonStore:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        # Keep original backup recovery for users who never enable GitHub sync.
+        # For users who have opted in, an intentionally empty synced dataset
+        # must never be "recovered" from an older non-empty local backup.
+        self._sync_history_marker = self.path.with_name(self.path.stem + ".sync-history")
         if not self.path.exists():
             self._write(DEFAULT_DATA)
 
@@ -205,14 +209,21 @@ class JsonStore:
             primary = migrate(primary_raw) if primary_raw is not None else None
             backup = migrate(backup_raw) if backup_raw is not None else None
 
-            # Recovery rule:
-            # - corrupted/unreadable primary -> valid backup
-            # - default/empty primary -> backup containing actual user records
-            # This specifically protects the per-user AppData store from being
-            # silently replaced by an empty structure after a failed/old run.
-            # A valid empty primary can be intentional (e.g. deleting all
-            # records on another device). Only recover when primary is corrupt.
-            use_backup = backup is not None and primary is None
+            # Legacy fallback still protects offline-only installations from
+            # accidental replacement with an empty default primary.
+            # After explicitly enabling sync once, an empty primary may be a
+            # legitimate deletion synced from the other partner.
+            use_backup = (
+                backup is not None
+                and (
+                    primary is None
+                    or (
+                        not self._sync_history_marker.exists()
+                        and not _has_user_data(primary)
+                        and _has_user_data(backup)
+                    )
+                )
+            )
 
             if use_backup:
                 self._write(backup)
@@ -226,6 +237,11 @@ class JsonStore:
             if primary_raw is None or primary != primary_raw:
                 self._write(primary)
             return primary
+
+    def enable_sync_history(self) -> None:
+        # Permanent marker: disconnecting must not resurrect deleted records.
+        with self._lock:
+            self._sync_history_marker.touch(exist_ok=True)
 
     def save(self, data: dict, notify: bool = True) -> None:
         with self._lock:
