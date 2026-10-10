@@ -14,6 +14,11 @@ function element(name = "element") {
     style: {},
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
     elements: { month: { value: "", addEventListener() {} }, repo: { value: "" }, token: { value: "" } },
+    household_name: { value: "" },
+    billing_start_month: { value: "" },
+    currency: { value: "" },
+    unassigned_alert_ratio_pct: { value: "" },
+    contract_review_interval_months: { value: "" },
     addEventListener(type, handler) { listeners.push({ name, type, handler }); },
     removeEventListener() {},
     setAttribute() {},
@@ -82,7 +87,8 @@ setImmediate(() => {
     assert(elements.get("#meterList")?.innerHTML.includes("Smoke test meter"),
       "Persisted meter records were not rendered in the UI");
     assert.equal(elements.get("#saveState")?.textContent, "Připraveno",
-      "Dashboard rendering did not finish successfully");
+      "Dashboard rendering did not finish successfully. Error: "+
+      (elements.get("#toast")?.textContent || "no toast"));
     console.log("Frontend initialization and persisted-data rendering smoke test passed.");
   } catch (error) {
     console.error(error);
