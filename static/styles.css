@@ -295,3 +295,17 @@ button,input,select{font:inherit}
 .svg-treemap-value{fill:#fff;font-size:12px;font-weight:650}
 .svg-treemap-small{fill:#fff;font-size:10px;font-weight:750}
 @media(max-width:700px){.dashboard-svg-chart{min-width:620px}.chart-card{overflow-x:auto}}
+
+
+/* Optional two-device GitHub sync */
+.sync-card { margin-top: 18px; }
+.sync-panel { margin-top: 18px; padding: 17px; background: rgba(111,132,143,.065); border: 1px solid rgba(111,132,143,.18); border-radius: 12px; }
+#githubSyncStatus p { margin: 0 0 9px; font-size: .88rem; line-height: 1.6; overflow-wrap: anywhere; }
+#githubSyncStatus p:last-child { margin-bottom: 0; }
+.sync-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.sync-actions .btn { min-width: 145px; }
+.sync-actions .hidden { display: none; }
+@media (max-width: 650px) {
+  .sync-actions { flex-direction: column; }
+  .sync-actions .btn { width: 100%; }
+}
