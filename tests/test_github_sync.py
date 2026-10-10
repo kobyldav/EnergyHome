@@ -76,6 +76,9 @@ class FakeGitHub:
         self.writes = 0
         self.race = False
 
+    def check_private(self):
+        return None
+
     def read(self):
         return deepcopy(self.data), self.sha
 
