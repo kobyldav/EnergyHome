@@ -1,11 +1,12 @@
 import json
+import os
 import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
-from energy_app.github_sync import GitHubSync, VersionConflict, merge_documents
+from energy_app.github_sync import GitHubSync, GitHubContents, VersionConflict, merge_documents, _dpapi
 from energy_app.storage import DEFAULT_DATA, JsonStore
 
 
@@ -13,6 +14,25 @@ def doc(**changes):
     data = deepcopy(DEFAULT_DATA)
     data.update(changes)
     return data
+
+
+class CredentialAndGitHubApiTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows DPAPI only")
+    def test_windows_dpapi_round_trip(self):
+        secret = b"test-token-not-a-real-token"
+        self.assertEqual(_dpapi(_dpapi(secret), decrypt=True), secret)
+
+    def test_git_blob_fallback_for_content_over_one_megabyte(self):
+        from unittest.mock import patch as mock_patch
+        import base64
+        api = GitHubContents("owner/private", "fake-token")
+        record = {"type": "file", "sha": "abc", "encoding": "none", "content": ""}
+        blob = {"content": base64.b64encode(json.dumps(DEFAULT_DATA).encode()).decode()}
+        with mock_patch.object(api, "_request", side_effect=[record, blob]) as request:
+            data, sha = api.read()
+        self.assertEqual(sha, "abc")
+        self.assertEqual(data["meters"], [])
+        self.assertEqual(request.call_count, 2)
 
 
 class MergeTests(unittest.TestCase):
