@@ -13,7 +13,7 @@ function element(name = "element") {
     dataset: { financeRange: name, analyticsRange: name, tab: name },
     style: {},
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-    elements: { month: { value: "" }, repo: { value: "" }, token: { value: "" } },
+    elements: { month: { value: "", addEventListener() {} }, repo: { value: "" }, token: { value: "" } },
     addEventListener(type, handler) { listeners.push({ name, type, handler }); },
     removeEventListener() {},
     setAttribute() {},
