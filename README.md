@@ -103,7 +103,7 @@ The source application prints its URL and actual database path. Disconnect
 GitHub sync or leave it unconfigured for purely local test runs. Never
 copy the private database into the Git working tree or commit it.
 
-### Flexible finance and day-by-day consumption (planned for 1.0.1)
+### Flexible finance and day-by-day consumption
 
 The dashboard's **Financial Position** card can display the original household
 billing cycle (unchanged default), the current calendar month, or a manually
