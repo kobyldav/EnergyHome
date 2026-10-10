@@ -77,6 +77,32 @@ This keeps consumption data and household energy payments in one place.
 
 Historical data can be used to compare consumption over time and identify changes in household energy usage.
 
+### Safe local test with existing household data
+
+Running `python app.py` normally reads the **same** local per-user database
+as the installed Windows Energy Home. Git does not contain personal data.
+For isolated developer tests, copy (do **not** move) your existing
+`%LOCALAPPDATA%\\EnergyHome\\energy_data.json` to another directory and
+set `ENERGYHOME_DATA_DIR` to that directory before running Python.
+This optional environment variable overrides the data directory only for
+that process; the installed application keeps its normal location.
+
+PowerShell example (from the test checkout):
+
+```powershell
+$source = Join-Path $env:LOCALAPPDATA 'EnergyHome\\energy_data.json'
+$testDir = Join-Path $env:TEMP 'EnergyHome-isolated-test'
+New-Item -ItemType Directory -Force -Path $testDir | Out-Null
+Copy-Item -LiteralPath $source -Destination (Join-Path $testDir 'energy_data.json') -ErrorAction Stop
+$env:ENERGYHOME_DATA_DIR = $testDir
+python app.py --no-browser --port 8765
+```
+
+Then open `http://127.0.0.1:8765`; `Ctrl+C` stops the test server.
+The source application prints its URL and actual database path. Disconnect
+GitHub sync or leave it unconfigured for purely local test runs. Never
+copy the private database into the Git working tree or commit it.
+
 ### Flexible finance and day-by-day consumption (planned for 1.0.1)
 
 The dashboard's **Financial Position** card can display the original household
