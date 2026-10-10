@@ -77,6 +77,25 @@ This keeps consumption data and household energy payments in one place.
 
 Historical data can be used to compare consumption over time and identify changes in household energy usage.
 
+### Flexible finance and day-by-day consumption (planned for 1.0.1)
+
+The dashboard's **Financial Position** card can display the original household
+billing cycle (unchanged default), the current calendar month, or a manually
+selected start/end date. Custom dates are an analysis filter, **not** a change
+to stored household settings. In custom/current-month views, monthly advances
+and fixed fees are prorated by calendar day, and remaining variable costs are
+forecasts estimated from previously observed daily consumption. These numbers
+are estimates, not verified bank payment transactions.
+
+In **Individual Consumption Trends**, the **Billing Period** button becomes a
+**single selected month** with day-of-month x-axis (1 through the month's actual
+length), plus a month picker. Each date shows daily consumption calculated from
+absolute readings; multiple readings on a single calendar day are combined,
+and actual reading dates are marked. Days between readings show interpolated
+daily estimates, **not directly measured daily consumption**. The existing
+**Last 12 Months** graph remains a monthly overview. The Sankey chart retains
+its established billing-cycle and 12-month scopes.
+
 ### Czech and English interface
 
 The application supports:
