@@ -35,6 +35,32 @@ class CredentialAndGitHubApiTests(unittest.TestCase):
         self.assertEqual(request.call_count, 2)
 
 
+class LocalRecoveryCompatibilityTests(unittest.TestCase):
+    def test_default_install_keeps_original_backup_recovery(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = JsonStore(Path(folder) / "energy_data.json")
+            populated = store.load()
+            populated["meters"].append({"id": "meter1", "name": "Existing"})
+            store.save(populated)
+            # An accidentally reset primary must still recover from backup.
+            store.save(deepcopy(DEFAULT_DATA))
+            self.assertEqual(store.load()["meters"][0]["name"], "Existing")
+
+    def test_opted_in_device_allows_intentional_deletion_even_after_disconnect(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "energy_data.json"
+            store = JsonStore(path)
+            store.enable_sync_history()
+            populated = store.load()
+            populated["meters"].append({"id": "meter1", "name": "Existing"})
+            store.save(populated)
+            store.save(deepcopy(DEFAULT_DATA))
+            self.assertEqual(store.load()["meters"], [])
+            # Permanent marker retains the deletion after restarting app.
+            second_run = JsonStore(path)
+            self.assertEqual(second_run.load()["meters"], [])
+
+
 class MergeTests(unittest.TestCase):
     def test_two_new_readings_on_separate_computers(self):
         b = doc()
@@ -123,6 +149,7 @@ class EngineTests(unittest.TestCase):
         self.store = JsonStore(folder / "energy_data.json")
         self.sync = GitHubSync(self.store, folder)
         self.sync.config_file.write_text(json.dumps({"repo": "example/private", "secret": "fake"}))
+        self.store.enable_sync_history()
         self.cloud = FakeGitHub()
         mock = patch.object(self.sync, "_client", return_value=self.cloud)
         mock.start()
