@@ -20,6 +20,7 @@ from urllib.request import urlopen
 
 from energy_app.analytics import dashboard
 from energy_app.periods import financial_position, month_consumption
+from energy_app.actuals import confirmed_month
 from energy_app.storage import JsonStore
 from energy_app.github_sync import GitHubSync, SyncError
 
@@ -649,6 +650,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             data = store.load()
             return self._json({"data": data, "dashboard": dashboard(data)})
+        if path == "/api/month-actual":
+            qs = parse_qs(urlparse(self.path).query)
+            try:
+                requested_month = qs.get("month", [""])[0]
+                return self._json(confirmed_month(store.load(), requested_month))
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
         if path == "/api/consumption-days":
             qs = parse_qs(urlparse(self.path).query)
             try:
