@@ -1,10 +1,7 @@
-"""Evidence-only month view.
+"""Month view based on real counter differences, with transparent daily interpolation.
 
-Unlike analytics.compute_months, this module never distributes consumption
-uniformly across days/months and never projects unobserved consumption.
-Only a nonnegative delta between two actual dated counter states can count.
-If an interval crosses a month boundary it is *not* attributed to either
-month. A complete month needs boundary readings for every relevant meter.
+Between two dated readings, evenly distribute known increments over covered
+calendar days including neighboring months; never extrapolate beyond last read.
 """
 from __future__ import annotations
 
@@ -13,6 +10,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from energy_app.analytics import UTILITIES, advance_for_month, tariff_for_month
+from energy_app.allocation import allocate_daily
 
 
 def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
@@ -126,6 +124,14 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         else:
             status[utility] = "partial"
 
+    # Reconstruct the daily timeline from actual dated counter differences.
+    # Allocation over days is an estimate; the between-reading delta is real.
+    allocated = allocate_daily(data, first, last, today)
+    values = allocated["measured"]
+    status = allocated["status"]
+    coverage = allocated["coverage"]
+    events = allocated["events"]
+
     tariff = tariff_for_month(data.get("tariffs", []), month)
     advances = advance_for_month(data.get("advances", []), month)
     fraction = max(0, (cutoff - first).days + 1) / monthrange(year, number)[1]
@@ -133,6 +139,10 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         u: values[u] * float(tariff.get(UTILITIES[u]["price"], 0) or 0)
         for u in UTILITIES
     }
+    # Heating radiator allocators are dimensionless distribution units, NOT
+    # heat meters in GJ. Never multiply them by a price per GJ.
+    if heat_uses_allocators:
+        variable_costs["heat"] = 0.0
     fixed_costs = {
         u: fraction * float(tariff.get(UTILITIES[u]["fixed"], 0) or 0)
         for u in UTILITIES
@@ -141,30 +151,20 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
     total_cost = sum(utility_costs.values())
     advance = fraction * sum(float(advances.get(u + "_monthly", 0) or 0) for u in UTILITIES)
 
-    # Historical rows remain immutable. For the day chart, put each confirmed
-    # interval delta on the date it was read: no interpolation or future days.
-    daily = {}
-    for utility, rows in events.items():
-        for item in rows:
-            key = item["date"]
-            daily.setdefault(key, {"measured": {u: 0.0 for u in UTILITIES},
-                                   "readings": {u: 0 for u in UTILITIES}})
-            daily[key]["measured"][utility] += item["amount"]
-            daily[key]["readings"][utility] += 1
-    day_rows = []
-    for day in range(1, monthrange(year, number)[1] + 1):
-        key = f"{month}-{day:02d}"
-        row = daily.get(key, {"measured": {u: 0.0 for u in UTILITIES},
-                              "readings": {u: 0 for u in UTILITIES}})
-        day_rows.append({"day": day, "date": key, **row,
-                         "estimated": {u: False for u in UTILITIES}})
+    # Interval allocation already includes cross-month days without forecasting.
+    day_rows = allocated["days"]
     return {
         "month": month, "start": first.isoformat(), "end": last.isoformat(),
         "as_of": cutoff.isoformat() if cutoff >= first else "",
         "days_in_month": len(day_rows), "days": day_rows,
-        "measured": {u: values[u] if confirmed[u] else None for u in UTILITIES},
+        "measured": {u: values[u] if allocated["has_data"][u] else None for u in UTILITIES},
+        "allocation_method": "uniform_between_readings",
+        "actual_intervals": allocated["intervals"],
+        "invalid_intervals": allocated["invalid_intervals"],
         "status": status, "coverage": coverage, "events": events,
         "heat_reading_intervals": heat_reading_intervals,
+        "heat_allocated_intervals": allocated["intervals"]["heat"],
+        "monthly_devices": allocated["device_monthly"],
         "heat_reading_total": sum(row["amount"] for row in heat_reading_intervals),
         "heat_cross_month_count": sum(bool(row["crosses_month"]) for row in heat_reading_intervals),
         "variable_costs": variable_costs, "fixed_costs": fixed_costs,
@@ -172,5 +172,5 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         "advance": advance, "balance": advance - total_cost,
         "fixed_fraction": fraction,
         "tariff": tariff, "advance_rule": advances,
-        "cost_note": "Náklady podle nastaveného ceníku; neověřují faktury ani zaplacené zálohy.",
+        "cost_note": "Objemy rozpočítány rovnoměrně mezi odečty; žádná předpověď. Radiátorové dílky nejsou GJ ani konečné vyúčtování tepla.",
     }

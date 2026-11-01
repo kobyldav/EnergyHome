@@ -67,6 +67,13 @@ async function fetch(url) {
       variable_costs:Object.fromEntries(utilities.map(u=>[u,u==="electricity"?200:0])),
       utility_costs:Object.fromEntries(utilities.map(u=>[u,u==="electricity"?205:0])),
       total_cost:205,advance:250,balance:45,
+      days:Array.from({length:10},(_,i)=>({
+        day:i+1,date:month+'-'+String(i+1).padStart(2,'0'),
+        measured:{electricity:10,cold_water:0,hot_water:0,gas:0,heat:0},
+        readings:{electricity:i===9?1:0},
+        has_allocation:{electricity:true},
+      })),
+      monthly_devices:[{utility:'electricity',id:'meter',name:'Electric',amount:100,has_data:true}],
       events:Object.fromEntries(utilities.map(u=>[u,u==="electricity"
         ? [{name:"Electric",from:"2026-09-30",date:month+"-31",amount:100}] : []])),
     };
@@ -93,7 +100,8 @@ async function flush() {
   assert.equal($("#kpiColdWater").textContent,"—");
   assert($("#actualCost").textContent.includes("205"),"Confirmed costs should be visible");
   assert($("#billingPeriod").textContent.includes("2026"),"Financial card shares month");
-  assert($("#mediaChart-electricity").innerHTML.includes(" V "),"Readings use step chart");
+  assert($("#mediaChart-electricity").innerHTML.includes(" L "),"Cumulative interpolated line must connect daily points");
+  assert(!$("#mediaChart-electricity").innerHTML.includes(" H "),"Chart must not use staircase H commands");
   assert(!$("#mediaChart-gas").innerHTML.includes("svg-grid-line"),"Missing readings have no axes");
   const handler=listeners.find(x=>x.name==="#dashboardMonthPicker"&&x.type==="change");
   assert(handler,"Period control must update dashboard");

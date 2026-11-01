@@ -21,6 +21,7 @@ from urllib.request import urlopen
 from energy_app.analytics import dashboard
 from energy_app.periods import financial_position, month_consumption
 from energy_app.actuals import confirmed_month
+from energy_app.heat_settlement import apartment_heat_estimate
 from energy_app.debug import build_debug_report
 from energy_app.storage import JsonStore
 from energy_app.github_sync import GitHubSync, SyncError
@@ -382,6 +383,21 @@ def save_settings(p: dict) -> dict:
             data["settings"].get("contract_review_interval_months", 6),
         ))),
     })
+    mode = str(p.get("heat_accounting_mode") or data["settings"].get("heat_accounting_mode", "house"))
+    if mode not in ("house", "apartment"):
+        raise ValueError("Neplatný režim rozúčtování tepla.")
+    data["settings"]["heat_accounting_mode"] = mode
+    for key in ("heat_base_share_pct", "heat_apartment_area_m2",
+                "heat_building_area_m2", "heat_building_cost_czk",
+                "heat_apartment_units", "heat_building_units"):
+        value = number(p.get(key, data["settings"].get(key, 0)))
+        if not (0 <= value < 1e12):
+            raise ValueError("Parametry vyúčtování musejí být nezáporná konečná čísla.")
+        data["settings"][key] = value
+    year = integer(p.get("heat_settlement_year"), data["settings"].get("heat_settlement_year", 0))
+    if year < 0 or year > 9999:
+        raise ValueError("Neplatný rok vyúčtování.")
+    data["settings"]["heat_settlement_year"] = year
     store.save(data)
     return {"ok": True}
 
@@ -650,6 +666,9 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/":
             return self._serve_index()
+        if path == "/api/heat-settlement":
+            settings = store.load().get("settings", {})
+            return self._json(apartment_heat_estimate(settings))
         if path == "/api/state":
             data = store.load()
             return self._json({"data": data, "dashboard": dashboard(data)})

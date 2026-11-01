@@ -13,13 +13,13 @@
     hot_water: ['#kpiHotWater','m³'], gas: ['#kpiGas','m³'], heat: ['#kpiHeat','jedn.']
   };
   const monthName = value => value ? monthsCz[Number(value.slice(5,7))-1] + ' ' + value.slice(0,4) : '—';
-  const noProjection = 'Spotřeba v přehledu vychází ze skutečných odečtů. U radiátorů se zobrazují samostatně přírůstky odečtené v daném měsíci; interval může začínat v předchozím měsíci.';
+  const noProjection = '';
   const statusText = (v, utility) => {
     const status = v.status?.[utility];
-    if (status === 'complete') return 'Úplný měsíc potvrzený odečty';
-    if (status === 'to_date') return 'Potvrzeno k ' + (v.coverage[utility]?.map(x=>x.to).sort().at(-1)||v.as_of);
-    if (status === 'partial') return 'Jen potvrzené intervaly – část měsíce chybí';
-    return 'Chybí dva navazující odečty v měsíci';
+    if (status === 'complete') return 'Rozpočítáno z odečtů za celý měsíc';
+    if (status === 'to_date') return 'Rozpočítáno do posledního odečtu';
+    if (status === 'partial') return 'Rozpočítáno podle odečtů · část měsíce chybí';
+    return 'Chybí návazné odečty';
   };
 
   // Advance amounts in the app are configured monthly rules, not bank payments.
@@ -43,9 +43,9 @@
       start:v.start, end:v.end, paid:v.advance, actual_cost:v.total_cost,
       current_balance:v.balance
     };
-    const displayHeat = Number(v.heat_reading_total||0);
+    const displayHeat = v.measured?.heat;
     const m = {
-      ...v, measured: {...v.measured, heat: v.heat_reading_intervals?.length ? displayHeat : null}, fixed_cost:Object.values(v.fixed_costs).reduce((a,b)=>a+Number(b||0),0),
+      ...v, fixed_cost:Object.values(v.fixed_costs).reduce((a,b)=>a+Number(b||0),0),
       unassigned:Object.fromEntries(utilities.map(u=>[u,Number(v.measured[u]||0)])),
       passive:Object.fromEntries(utilities.map(u=>[u,0])),
       active:Object.fromEntries(utilities.map(u=>[u,0]))
@@ -53,27 +53,22 @@
     const canMeasure = utilities.some(u=>v.status[u]!=='missing');
     $('#emptyHint').classList.toggle('hidden',canMeasure);
     if (!canMeasure) $('#emptyHint').innerHTML =
-      '<strong>Pro '+escapeHtml(monthName(v.month))+' chybí potvrzený rozdíl odečtů.</strong> Zadejte stavy měřidel v tomto měsíci; pro úplnou měsíční spotřebu také stav k poslednímu dni předchozího měsíce a poslednímu dni vybraného měsíce.';
+      '<strong>Pro '+escapeHtml(monthName(v.month))+' zatím chybí odečty.</strong> Zadejte alespoň dva navazující stavy měřidla.';
     for (const [u, [selector,unit]] of Object.entries(byUtility)) {
-      const isHeatReadings = u==='heat' && Boolean(v.heat_reading_intervals?.length);
-      const value = isHeatReadings ? displayHeat : v.measured[u];
+      const value = v.measured?.[u];
       $(selector).textContent = value == null ? '—' : nf.format(value)+' '+unit;
       const note = $('#kpiNote-'+u);
-      if (note) note.textContent = isHeatReadings
-        ? (v.heat_cross_month_count ? 'Přírůstky odečtené v měsíci · část začíná dříve' : 'Přírůstky odečtené v měsíci')
-        : statusText(v,u);
+      if (note) note.textContent = statusText(v,u);
     }
     $('#kpiCost').textContent = money(v.total_cost);
     $('#kpiMonth').textContent = monthName(v.month) + (v.as_of && v.as_of < v.end ? ' · k '+v.as_of : '');
     drawFinancialPosition(v);
     const notes = [];
-    notes.push({severity:'info',text:noProjection});
+
     if (utilities.some(u=>v.status[u]==='partial'))
       notes.push({severity:'warning',text:'Některé odečty pokrývají jen část zvoleného měsíce. Součet není jeho celková spotřeba.'});
-    if (v.heat_cross_month_count)
-      notes.push({severity:'info',text:'Topení: '+v.heat_cross_month_count+' odečtů zahrnuje interval začínající před vybraným měsícem. Přírůstky jsou skutečné, ale nejde o přesnou spotřebu za kalendářní měsíc.'});
-    if (STATE.dashboard?.finance_notes?.heat_definition_provisional)
-      notes.push({severity:'info',text:'Radiátorové dílky nejsou jednotky GJ a náklady na teplo mohou vyžadovat vyúčtování.'});
+
+
     if (STATE.dashboard?.contract_review?.due)
       notes.push({severity:'warning',text:'Je čas zkontrolovat platnost smluv a ceníků.'});
     $('#alerts').innerHTML = notes.map(n=>'<div class="alert '+n.severity+'"><span>'+escapeHtml(n.text)+'</span></div>').join('');
@@ -96,9 +91,9 @@
   function drawElectricIntervals(v){
     const svg=$('#usageChart'),W=760,H=280,left=82,right=24,top=38,bottom=49;
     const grouped=new Map();
-    for(const e of (v.events?.electricity||[])){
-      const key=e.date;
-      grouped.set(key,(grouped.get(key)||0)+Number(e.amount||0));
+    for(const d of (v.days||[])){
+      if(!d.has_allocation?.electricity)continue;
+      grouped.set(d.date,Number(d.measured?.electricity||0));
     }
     const rows=[...grouped].sort((a,b)=>a[0].localeCompare(b[0]));
     if(!rows.length){svgChartEmpty('#usageChart','Nejsou potvrzené přírůstky elektřiny za měsíc.',W,H);return;}
@@ -118,11 +113,9 @@
   function drawElectricMeters(v){
     const svg=$('#applianceChart'),W=760,H=300,left=205,right=95,top=31;
     const grouped=new Map();
-    for(const e of (v.events?.electricity||[])){
-      const key=e.id||e.name;
-      const current=grouped.get(key)||{name:e.name,amount:0};
-      current.amount+=Number(e.amount||0);
-      grouped.set(key,current);
+    for(const e of (v.monthly_devices||[])){
+      if(e.utility!=='electricity'||!e.has_data)continue;
+      grouped.set(e.id,{name:e.name,amount:Number(e.amount||0)});
     }
     const rows=[...grouped.values()].sort((a,b)=>b.amount-a.amount);
     if(!rows.length){svgChartEmpty('#applianceChart','Bez potvrzených odečtů elektroměrů.',W,H);return;}
@@ -138,70 +131,85 @@
   }
 
   function renderMonthHeat(v){
-    const box=$('#heatAllocatorDashboard');
-    const heat=v.heat_reading_intervals||[];
-    const entities=STATE.data.heat_allocators||[];
-    if(!entities.length){
-      box.innerHTML='<p class="help">Zatím nejsou založené radiátorové měřiče.</p>';
+    const box = $('#heatAllocatorDashboard');
+    const devices = (v.monthly_devices || []).filter(d => d.utility === 'heat');
+    if(!(STATE.data.heat_allocators || []).length){
+      box.innerHTML='<p class="help">Zatím nejsou evidované radiátorové měřiče.</p>';
       return;
     }
-    if(!heat.length){
-      box.innerHTML='<p class="help">Ve vybraném měsíci zatím nejsou odečty s potvrzeným přírůstkem radiátorových měřičů. Zadané odečty z jiných měsíců zůstávají v historii.</p>';
+    const current = devices.filter(d=>d.has_data);
+    if(!current.length){
+      box.innerHTML='<p class="help">Pro vybraný měsíc zatím nelze rozpočítat spotřebu radiátorů. Jsou potřeba dva odečty.</p>';
       return;
     }
-    const grouped=new Map();
-    for(const item of heat){
-      const room=item.room||'Bez místnosti';
-      const row=grouped.get(room)||{room,amount:0,count:0,overlap:0};
-      row.amount+=Number(item.amount||0);row.count++;row.overlap+=Number(Boolean(item.crosses_month));
-      grouped.set(room,row);
+    const grouped = new Map();
+    for(const d of current){
+      const room = d.room || 'Bez místnosti';
+      const obj = grouped.get(room) || {room,devices:0,value:0};
+      obj.devices++;
+      obj.value += Number(d.amount || 0);
+      grouped.set(room,obj);
     }
     const roomRows=[...grouped.values()].sort((a,b)=>a.room.localeCompare(b.room,'cs')).map(r=>
-      '<tr><td><b>'+escapeHtml(r.room)+'</b></td><td>'+r.count+'</td><td>'+nf.format(r.amount)+' jedn.</td><td>'+(r.overlap?'Včetně minulého měsíce':'V rámci měsíce')+'</td></tr>').join('');
-    const intervalRows=[...heat].sort((a,b)=>a.date.localeCompare(b.date)||a.room.localeCompare(b.room)).map(item=>
-      '<tr><td>'+escapeHtml(item.room)+'</td><td>'+escapeHtml(item.name)+'</td><td>'+escapeHtml(item.from)+' → '+escapeHtml(item.date)+'</td><td><b>'+nf.format(item.amount)+' jedn.</b></td><td>'+(item.crosses_month?'Přes hranici měsíce':'Uvnitř měsíce')+'</td></tr>').join('');
-    const note=v.heat_cross_month_count
-      ? 'Jde o skutečné rozdíly mezi odečty dokončenými ve vybraném měsíci. Část intervalů začala dříve; součet tedy není přesnou spotřebou samotného měsíce a nezapočítává se jako měsíční spotřeba do finančních nákladů.'
-      : 'Přírůstky jsou vypočtené z reálných stavů radiátorových měřičů v tomto měsíci.';
-    box.innerHTML='<p class="help">'+escapeHtml(note)+'</p>'+
-      '<div class="table-wrap dashboard-table"><table><thead><tr><th>Místnost</th><th>Odečty</th><th>Přírůstek</th><th>Pokrytí</th></tr></thead><tbody>'+roomRows+'</tbody></table></div>'+
-      '<h3 class="heat-interval-heading">Jednotlivé odečty</h3>'+
-      '<div class="table-wrap dashboard-table"><table><thead><tr><th>Místnost</th><th>Měřič</th><th>Období odečtu</th><th>Přírůstek</th><th>Typ období</th></tr></thead><tbody>'+intervalRows+'</tbody></table></div>';
+      '<tr><td><b>'+escapeHtml(r.room)+'</b></td><td>'+r.devices+'</td><td><b>'+nf.format(r.value)+' jedn.</b></td></tr>').join('');
+    const rows=current.sort((a,b)=>a.room.localeCompare(b.room,'cs')).map(d=>
+      '<tr><td>'+escapeHtml(d.room)+'</td><td>'+escapeHtml(d.name)+'</td><td><b>'+nf.format(d.amount)+' jedn.</b></td></tr>').join('');
+    box.innerHTML='<div class="table-wrap dashboard-table"><table><thead><tr><th>Místnost</th><th>Radiátory</th><th>Spotřeba za vybraný měsíc</th></tr></thead><tbody>'+
+      roomRows+'</tbody></table></div>'+
+      '<h3 class="heat-interval-heading">Jednotlivé radiátory</h3>'+
+      '<div class="table-wrap dashboard-table"><table><thead><tr><th>Místnost</th><th>Měřič</th><th>Rozpočítané dílky</th></tr></thead><tbody>'+
+      rows+'</tbody></table></div>';
   }
 
+  // Connected, linearly interpolated cumulative usage between actual readings.
+  // Linear slopes reflect average intervals, not direct daily measurements.
   function drawActualReadingChart(utility,v){
     const svg=$('#mediaChart-'+utility),stat=$('#mediaStat-'+utility);
     if(!svg||!stat)return;
-    const events=(utility==='heat' ? (v.heat_reading_intervals||[]) : (v.events?.[utility]||[])).filter(x=>x.date<=currentLocalIsoDate())
-      .sort((a,b)=>a.date.localeCompare(b.date));
-    const meta=utilitySvgMeta[utility],W=760,H=240,left=82,right=26,top=30,bottom=45;
-    const total=events.reduce((s,e)=>s+Number(e.amount||0),0);
-    stat.innerHTML = events.length
-      ? '<span><b>'+nf.format(total)+'</b> '+svgSafe(meta.unit)+'</span><span>'+events.length+' potvrzených intervalů</span>'
-      : '<span>Bez potvrzených odečtů</span>';
-    if(!events.length) {
-      svgChartEmpty('#mediaChart-'+utility,'Bez navazujících odečtů ve vybraném měsíci.',W,H);
+    const days=(v.days||[]).filter(d=>d.date<=currentLocalIsoDate());
+    const observed=days.filter(d=>Boolean(d.has_allocation?.[utility]));
+    const meta=utilitySvgMeta[utility],W=760,H=240,left=82,right=24,top=28,bottom=43;
+    const total=observed.reduce((sum,d)=>sum+Number(d.measured?.[utility]||0),0);
+    const count=days.reduce((sum,d)=>sum+Number(d.readings?.[utility]||0),0);
+    stat.innerHTML=observed.length
+      ? '<span><b>'+nf.format(total)+'</b> '+svgSafe(meta.unit)+'</span>'+
+        '<span>'+observed.length+' pokrytých dnů</span><span>'+count+' odečtů</span>'
+      : '<span>Bez navazujících odečtů</span>';
+    if(!observed.length){
+      svgChartEmpty('#mediaChart-'+utility,'Zatím nejsou dostupné odečty.',W,H);
       return;
     }
-    const max=Math.max(0.001,total*1.15),lastDay=Math.max(1,...events.map(x=>Number(x.date.slice(-2))));
-    const g=svgYAxis(W,H,0,max,left,right,top,bottom,v=>nf.format(v));
-    const x=day=>lastDay===1?left+g.plotW/2:left+(day-1)/Math.max(1,lastDay-1)*g.plotW;
-    let cumulative=0,graph='M '+x(1)+' '+g.y(0),markers='';
-    for(const e of events){
-      const day=Number(e.date.slice(-2));
-      const xx=x(day);
-      graph+=' H '+xx;
-      cumulative+=Number(e.amount||0);
-      graph+=' V '+g.y(cumulative);
-      const tip=e.name+': '+e.from+' → '+e.date+' · '+nf.format(e.amount)+' '+meta.unit+
-        (e.crosses_month?' · interval přesahuje předchozí měsíc':'');
-      markers+='<circle cx="'+xx+'" cy="'+g.y(cumulative)+'" r="5" class="svg-reading-marker" style="fill:'+meta.color+'"><title>'+svgSafe(tip)+'</title></circle>';
+    const first=observed[0].day,last=observed[observed.length-1].day;
+    const scaleMax=Math.max(0.001,total*1.12);
+    const plotW=W-left-right,plotH=H-top-bottom;
+    const x=day=>first===last?left+plotW/2:left+(day-first)/(last-first)*plotW;
+    const y=value=>top+plotH-(value/scaleMax)*plotH;
+    const grid=[];
+    for(let i=0;i<=4;i++){
+      const val=scaleMax*(1-i/4),gy=top+plotH*i/4;
+      grid.push('<line class="svg-grid-line" x1="'+left+'" x2="'+(W-right)+'" y1="'+gy+'" y2="'+gy+'"></line>');
+      grid.push('<text class="svg-axis-text" x="'+(left-9)+'" y="'+(gy+4)+'" text-anchor="end">'+svgSafe(nf.format(val))+'</text>');
     }
-    const ticks=[...new Set([1,...events.map(e=>Number(e.date.slice(-2)))])];
+    let cumulative=0,lastCovered=null,path='',markers='';
+    for(const d of days){
+      if(!d.has_allocation?.[utility]){lastCovered=null;continue;}
+      cumulative+=Number(d.measured?.[utility]||0);
+      const xx=x(d.day),yy=y(cumulative);
+      path+=(lastCovered===d.day-1?' L ':' M ')+xx.toFixed(2)+' '+yy.toFixed(2);
+      lastCovered=d.day;
+      if(Number(d.readings?.[utility]||0)>0){
+        markers+='<circle cx="'+xx+'" cy="'+yy+'" r="4.5" style="fill:'+meta.color+'"><title>'+
+          svgSafe(d.date+' · kumulativně '+nf.format(cumulative)+' '+meta.unit)+'</title></circle>';
+      }
+    }
+    const labelStep=Math.max(1,Math.ceil((last-first+1)/9));
+    const labels=observed.filter(d=>d.day===first||d.day===last||(d.day-first)%labelStep===0).map(d=>
+      '<text class="svg-axis-text" x="'+x(d.day)+'" y="'+(H-12)+'" text-anchor="middle">'+d.day+'</text>').join('');
     svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+
-      g.grid+'<path class="svg-media-line" d="'+graph+'" style="stroke:'+meta.color+'"></path>'+markers+
-      ticks.map(day=>'<text class="svg-axis-text" x="'+x(day)+'" y="'+(H-12)+'" text-anchor="middle">'+day+'</text>').join('')+
-      '<text class="svg-unit-label" x="'+left+'" y="15">'+svgSafe(meta.unit)+' · ODEČTY</text>';
+      grid.join('')+
+      '<path class="svg-media-line" d="'+path+'" style="stroke:'+meta.color+'"></path>'+
+      markers+labels+
+      '<text class="svg-unit-label" x="'+left+'" y="14">'+svgSafe(meta.unit)+' · KUMULATIVNĚ</text>';
   }
 
   let requestedKey='';

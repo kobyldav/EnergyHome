@@ -275,7 +275,40 @@ function renderAdvances(){
   const list=[...(STATE.data.advances||[])].sort((a,b)=>b.effective_from.localeCompare(a.effective_from));
   $('#advanceList').innerHTML=list.map(a=>`<div class="item"><div><h3>Platí od ${a.effective_from}</h3><p>Elektřina ${money(a.electricity_monthly)} · studená voda ${money(a.cold_water_monthly)} · teplá voda ${money(a.hot_water_monthly)} · plyn ${money(a.gas_monthly)} · teplo ${money(a.heat_monthly)} · celkem <b>${money(Number(a.electricity_monthly||0)+Number(a.cold_water_monthly||0)+Number(a.hot_water_monthly||0)+Number(a.gas_monthly||0)+Number(a.heat_monthly||0))}</b></p></div><div class="item-actions"><button class="btn secondary small" onclick="editAdvance('${a.id}')">Upravit</button><button class="btn danger small" onclick="deleteAdvance('${a.id}')">Smazat</button></div></div>`).join('')||'<p class="help">Zatím nejsou zadané žádné zálohy.</p>';
 }
-function renderSettings(){ const s=STATE.data.settings||{}, f=$('#settingsForm'); f.household_name.value=s.household_name||''; f.billing_start_month.value=s.billing_start_month||1; f.currency.value=s.currency||'CZK'; f.unassigned_alert_ratio_pct.value=Math.round(Number(s.unassigned_alert_ratio||.3)*100); if(f.contract_review_interval_months)f.contract_review_interval_months.value=s.contract_review_interval_months||6; }
+function renderSettings(){
+  const s=STATE.data.settings||{},f=$('#settingsForm');
+  f.household_name.value=s.household_name||'';
+  f.billing_start_month.value=s.billing_start_month||1;
+  f.currency.value=s.currency||'CZK';
+  f.unassigned_alert_ratio_pct.value=Math.round(Number(s.unassigned_alert_ratio??.3)*100);
+  if(f.contract_review_interval_months)f.contract_review_interval_months.value=s.contract_review_interval_months||6;
+  const fields=['heat_accounting_mode','heat_settlement_year','heat_base_share_pct',
+    'heat_apartment_area_m2','heat_building_area_m2','heat_building_cost_czk',
+    'heat_apartment_units','heat_building_units'];
+  for(const key of fields){
+    const input=f.elements[key];
+    if(input)input.value=s[key]??(key==='heat_accounting_mode'?'house':'');
+  }
+  showHeatingMode();
+  if(s.heat_accounting_mode==='apartment') {
+    api('/api/heat-settlement').then(result=>{
+      if(!STATE||STATE.data.settings?.heat_accounting_mode!=='apartment')return;
+      const box=$('#heatSettlementResult');
+      box.classList.remove('hidden');
+      box.innerHTML=result.ready
+        ? '<strong>Orientační roční cena vytápění · '+escapeHtml(String(result.period_year||'bez roku'))+'</strong>'+
+          '<p>Základní složka (podle plochy): <b>'+money(result.base_cost)+'</b> · Spotřební složka (podle korigovaných dílků): <b>'+money(result.consumption_cost)+'</b></p>'+
+          '<p>Orientačně celkem: <strong>'+money(result.total)+'</strong> · Bez konečných úprav a limitů správce.</p>'
+        : '<strong>Roční rozúčtování tepla</strong><p>'+escapeHtml(result.reason||'Doplňte údaje domu pro orientační výpočet.')+'</p>';
+    }).catch(()=>{});
+  }
+}
+function showHeatingMode(){
+  const mode=$('#heatAccountingMode').value;
+  $('#apartmentHeatFields').classList.toggle('hidden',mode!=='apartment');
+  if(mode!=='apartment')$('#heatSettlementResult').classList.add('hidden');
+}
+$('#heatAccountingMode').addEventListener('change',showHeatingMode);
 async function markContractReviewed(){try{await api('/api/contract-review',{method:'POST',body:JSON.stringify({})});toast('Kontrola smluv označena jako hotová');await reloadState()}catch(err){toast(err.message)}}
 
 $('#meterForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/meters',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries()))});e.target.reset();e.target.elements.id.value='';saveState();toast('Měřidlo uloženo');await reloadState()}catch(err){toast(err.message)}});
