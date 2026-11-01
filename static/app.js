@@ -888,10 +888,10 @@ $('#syncTestBtn').addEventListener('click', async () => {
   const output = $('#syncDiagnostics');
   output.textContent = 'Ověřuji přístup k soukromému datovému repozitáři…';
   try {
-    const report = await api('/api/sync/diagnose');
+    const report = await api('/api/sync/diagnose', {method:'POST', body:'{}'});
     const remote = report.remote_exists ? report.remote_records+' záznamů' : 'zatím žádný soubor';
     output.textContent = 'Přístup k soukromému repozitáři funguje. V cloudu: '+remote+
-      ', v tomto počítači: '+report.local_records+' záznamů. Pro ověření zápisu spusťte synchronizaci.';
+      ', v tomto počítači: '+report.local_records+' záznamů. Zápis i smazání testovacího souboru proběhly úspěšně.';
   } catch(error) {
     output.textContent = 'Test připojení selhal: '+error.message;
   }
