@@ -13,6 +13,7 @@ import os
 import re
 import threading
 import time
+import uuid
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -191,6 +192,30 @@ class GitHubContents:
         if info.get("archived"):
             raise SyncError("Archivovaný repozitář nelze používat pro synchronizaci.")
 
+    def probe_write(self):
+        """Verify Contents write/delete with harmless temporary JSON, not household data."""
+        name = ".energyhome-connection-check-" + uuid.uuid4().hex + ".json"
+        path = "/contents/" + quote(name)
+        test_data = base64.b64encode(b'{"app":"EnergyHome","check":true}').decode("ascii")
+        result = self._request("PUT", path, {
+            "message": "EnergyHome: verify sync access",
+            "content": test_data,
+        })
+        try:
+            sha = result["content"]["sha"]
+        except (TypeError, KeyError):
+            raise SyncError("GitHub nepotvrdil vytvoření testovacího souboru.") from None
+        try:
+            self._request("DELETE", path, {
+                "message": "EnergyHome: remove connection check",
+                "sha": sha,
+            })
+        except SyncError:
+            raise SyncError(
+                "Zápis funguje, ale testovací soubor se nepodařilo odstranit. "
+                "Zkontrolujte v soukromém repozitáři soubor " + name + "."
+            ) from None
+
     def read(self):
         record = self._request("GET", "/contents/" + quote(SYNC_FILENAME), missing_ok=True)
         if record is None:
@@ -305,6 +330,7 @@ class GitHubSync:
         # Metadata access alone does not prove that the token may read data.
         # Check the Contents endpoint before committing a new configuration.
         client.read()
+        client.probe_write()
         protected = base64.b64encode(_dpapi(token.encode("utf-8"))).decode("ascii")
         with self.lock:
             current = self._config()
@@ -333,7 +359,7 @@ class GitHubSync:
             return self.status()
 
     def diagnose(self):
-        """Read-only connection check; never uploads or overwrites household data."""
+        """Check private read/write access using a disposable file, never household data."""
         with self.lock:
             cfg = self._config()
             if not cfg:
@@ -342,6 +368,7 @@ class GitHubSync:
                 client = self._client(cfg)
                 client.check_private()
                 remote, sha = client.read()
+                client.probe_write()
                 count = sum(len(remote.get(key, [])) for key in COLLECTION_KEYS)
                 local = self.store.load()
                 local_count = sum(len(local.get(key, [])) for key in COLLECTION_KEYS)
