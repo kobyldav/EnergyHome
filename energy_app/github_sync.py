@@ -172,7 +172,13 @@ class GitHubContents:
                 return None
             if error.code in (409, 422) and method == "PUT":
                 raise VersionConflict("GitHub mezitím změnil data.") from None
-            raise SyncError("GitHub API: HTTP " + str(error.code) + ". Ověřte přístup a oprávnění tokenu.") from None
+            messages = {
+                401: "GitHub odmítl token. Vytvořte nový fine-grained token s přístupem k soukromému datovému repozitáři.",
+                403: "GitHub přístup zamítl (403). Zkontrolujte Contents: Read and write, přístup vybraného účtu a případně limit API.",
+                404: "Soukromý repozitář nebyl nalezen (404), nebo k němu účet nemá přístup. Pozvaný spolupracovník musí přijmout pozvánku.",
+                413: "Soubor je pro GitHub příliš velký.",
+            }
+            raise SyncError(messages.get(error.code, "GitHub API: HTTP " + str(error.code) + ".")) from None
         except (URLError, TimeoutError, OSError):
             raise SyncError("GitHub není dostupný. Místní data jsou zachována.") from None
         except (ValueError, UnicodeDecodeError):
@@ -232,9 +238,16 @@ class GitHubSync:
         self.folder = Path(folder)
         self.config_file = self.folder / "github-sync.json"
         self.base_file = self.folder / "github-sync-base.json"
+        self.state_file = self.folder / "github-sync-state.json"
         self.lock = threading.RLock()
         self.wakeup = threading.Event()
         self.last_synced = None
+        try:
+            previous = json.loads(self.state_file.read_text(encoding="utf-8"))
+            if isinstance(previous, dict):
+                self.last_synced = previous.get("last_synced")
+        except (ValueError, OSError):
+            pass
         self.last_error = ""
         self.conflicts = []
         self.running = False
@@ -287,12 +300,18 @@ class GitHubSync:
             raise SyncError("Repozitář zadejte ve formátu vlastník/název.")
         if not token or len(token) > 512:
             raise SyncError("Zadejte platný GitHub token.")
-        GitHubContents(repo, token).check_private()
+        client = GitHubContents(repo, token)
+        client.check_private()
+        # Metadata access alone does not prove that the token may read data.
+        # Check the Contents endpoint before committing a new configuration.
+        client.read()
         protected = base64.b64encode(_dpapi(token.encode("utf-8"))).decode("ascii")
         with self.lock:
             current = self._config()
             if current is None or current["repo"] != repo:
                 self.base_file.unlink(missing_ok=True)
+                self.state_file.unlink(missing_ok=True)
+                self.last_synced = None
             _atomic_json(self.config_file, {"repo": repo, "secret": protected})
             # Opted-in devices must not resurrect intentionally deleted records.
             # This marker survives disconnection, keeping existing datasets safe.
@@ -306,11 +325,33 @@ class GitHubSync:
         with self.lock:
             self.config_file.unlink(missing_ok=True)
             self.base_file.unlink(missing_ok=True)
+            self.state_file.unlink(missing_ok=True)
             self.last_error = ""
             self.conflicts = []
             self.last_synced = None
             self.wakeup.clear()
             return self.status()
+
+    def diagnose(self):
+        """Read-only connection check; never uploads or overwrites household data."""
+        with self.lock:
+            cfg = self._config()
+            if not cfg:
+                raise SyncError("Synchronizace není nastavená.")
+            try:
+                client = self._client(cfg)
+                client.check_private()
+                remote, sha = client.read()
+                count = sum(len(remote.get(key, [])) for key in COLLECTION_KEYS)
+                local = self.store.load()
+                local_count = sum(len(local.get(key, [])) for key in COLLECTION_KEYS)
+                return {"ok": True, "private": True,
+                        "remote_exists": sha is not None,
+                        "remote_records": count, "local_records": local_count,
+                        "last_synced": self.last_synced}
+            except (SyncError, OSError, ValueError) as error:
+                self.last_error = str(error)
+                raise SyncError(str(error)) from None
 
     def sync(self, preference: str | None = None):
         if preference not in (None, "local", "remote"):
@@ -350,6 +391,7 @@ class GitHubSync:
                             self.store.save(merged, notify=False)
                         _atomic_json(self.base_file, merged)
                         self.last_synced = datetime.now(timezone.utc).isoformat()
+                        _atomic_json(self.state_file, {"last_synced": self.last_synced})
                         self.last_error = ""
                         self.conflicts = []
                         return {"ok": True, "updated": merged != local}
