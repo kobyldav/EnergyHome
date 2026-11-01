@@ -334,3 +334,9 @@ button,input,select{font:inherit}
  .svg-analytics-head {flex-wrap:wrap;}
  .analytics-range {width:100%;justify-content:flex-start;}
 }
+
+/* Month-first dashboard: one visible period for every panel. */
+.dashboard-month-filter{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12px;font-weight:700;margin:0 14px 0 auto;min-width:177px}
+.dashboard-month-filter input{border:1px solid var(--line-strong);padding:9px 12px;border-radius:4px;color:var(--text);background:#fff;font:inherit;font-size:14px;min-width:165px}
+.kpi small[id^="kpiNote-"]{line-height:1.4;min-height:33px;display:block}
+@media(max-width:650px){.topbar{flex-wrap:wrap;gap:12px}.dashboard-month-filter{margin:0;width:100%}.dashboard-month-filter input{width:100%}}
