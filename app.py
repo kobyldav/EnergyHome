@@ -237,6 +237,10 @@ def save_tariff(p: dict) -> dict:
         "gas_fixed_monthly": number(p.get("gas_fixed_monthly")),
         "heat_fixed_monthly": number(p.get("heat_fixed_monthly")),
     }
+    # Tariff field is used as CZK per provisional radiator unit when
+    # allocators are present, or CZK/GJ for an actual heat meter.
+    if row["heat_per_gj"] < 0:
+        raise ValueError("Jednotková cena tepla nesmí být záporná.")
     # Same date = replace that version; a new date creates a new historical version.
     data["tariffs"] = [t for t in data["tariffs"] if t.get("id") != row_id and t.get("effective_from") != effective_from]
     data["tariffs"].append(row)
