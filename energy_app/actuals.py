@@ -164,6 +164,7 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         "status": status, "coverage": coverage, "events": events,
         "heat_reading_intervals": heat_reading_intervals,
         "heat_allocated_intervals": allocated["intervals"]["heat"],
+        "monthly_devices": allocated["device_monthly"],
         "heat_reading_total": sum(row["amount"] for row in heat_reading_intervals),
         "heat_cross_month_count": sum(bool(row["crosses_month"]) for row in heat_reading_intervals),
         "variable_costs": variable_costs, "fixed_costs": fixed_costs,
