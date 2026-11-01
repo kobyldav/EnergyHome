@@ -103,36 +103,42 @@ The source application prints its URL and actual database path. Disconnect
 GitHub sync or leave it unconfigured for purely local test runs. Never
 copy the private database into the Git working tree or commit it.
 
-### Month-first dashboard (upcoming change in this branch)
+### Month-first dashboard: averaged daily consumption from measured intervals
 
-Every dashboard chart and KPI now follows the **same month** selected in the header.
-The old billing-cycle/current-month/custom-date/12-month mixtures and visible
-forecast numbers have been removed from the dashboard. The finance panel shows
-only costs calculated from observed counter increments plus proportional fixed
-fees from saved tariffs. **Scheduled advances are not verified bank payments**,
-and calculated costs are not a supplier invoice.
+One selected calendar month controls all dashboard graphs and summary cards.
+For every meter, the interval between two dated actual readings is divided
+evenly across its actual number of covered calendar days. The start-day reading
+is the boundary and consumption belongs to the subsequent days, ending on the
+new reading date. An interval spanning two months is split accordingly.
+Cumulative charts use connected line segments (not stairs); they stop at the
+last observed reading. This is **uniform allocation of observed deltas**, not
+a direct measurement of each day or prediction beyond the last reading.
+Days lacking two readings are not manufactured.
 
-The `/api/month-actual?month=YYYY-MM` endpoint returns evidence-only consumption:
+Heating radiator devices report **distribution units**. They are not GJ;
+their read differences are averaged across days just like other utilities,
+including when the next reading falls on the first of a new month. The
+monthly overview groups the attributed units by room/radiator.
 
-- Each nonnegative difference must have two actual, dated counter states.
-- The whole interval must belong to the selected calendar month. A difference
-  spanning a month boundary is **not** guessed or allocated to either month.
-- A **complete** month requires readings at the end of the previous month and
-  the end of the selected month for **every meter of that utility**.
-- A **partial** month contains only confirmed in-month intervals, never the
-  presumed full-month amount. Missing intervals are shown as missing, not zero.
-- The day chart shows increases **only on reading dates** as a step graph.
-  Flat sections do **not** imply zero use on those days; daily consumption
-  cannot be recovered from occasional cumulative meter readings.
-- Radiator allocator readings with resets and coefficients are respected.
-  Allocator units are not automatically GJ.
-- Existing historical data and local backups are preserved. The older
-  interpolation-based endpoints remain for backwards compatibility, but are
-  not used by the new dashboard.
+**Annual apartment heating cost estimator (Settings)**
 
-If precise calendar-month totals matter, take readings on the last day of
-each month. A single mid-month reading cannot establish the true monthly
-amount without a measurement at the boundary.
+- Choose independent house heat supply or apartment-building allocation.
+- For apartment buildings, the optional annual calculator needs the same-year
+  building's total heating cost, total chargeable area, apartment area,
+  corrected radiator units for the whole building and apartment, and
+  building's approved basic share percentage (30–70%).
+- Basic cost = building cost × basic share × apartment area / building area.
+- Consumption cost = building cost × remainder × apartment corrected units /
+  building corrected units.
+- This is a preliminary arithmetic allocation only; it does not apply
+  mandatory per-area bounds, location corrections and other settlement
+  adjustments. The building administrator's official annual bill is final.
+- If building-wide data is missing, no apartment heat price is guessed.
+  Radiator distribution units are **never** multiplied by a per-GJ price.
+- The optional annual calculation is kept separate from month-by-month
+  heating readings and monthly finance totals.
+
+Local JSON and encrypted GitHub synchronization credentials are preserved.
 
 ### Czech and English interface
 
