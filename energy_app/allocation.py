@@ -23,6 +23,8 @@ def allocate_daily(data: dict, month_start: date, month_end: date, today: date):
     all_intervals: dict[str, list] = {u: [] for u in units}
     meters_per_utility = {u: [] for u in units}
     invalid: dict[str, list] = {u: [] for u in units}
+    device_monthly = defaultdict(float)
+    device_info = {}
     by_meter = defaultdict(list)
     by_heat = defaultdict(list)
 
@@ -45,10 +47,14 @@ def allocate_daily(data: dict, month_start: date, month_end: date, today: date):
         obj["has_allocation"][utility] = True
         obj["estimated"][utility] |= interpolated
         covered[utility].setdefault(entity_id, set()).add(key)
+        device_monthly[entity_id] += amount
 
     def calculate(utility: str, entity: dict, readings: list, coefficient=1., allow_reset=False):
         entity_id = str(entity.get("id") or "")
         meters_per_utility[utility].append(entity_id)
+        device_info[entity_id] = {"name": str(entity.get("name") or ""),
+                                  "room": str(entity.get("room") or "Bez místnosti"),
+                                  "utility": utility}
         previous = str(entity.get("base_date") or "")
         try:
             previous_day = date.fromisoformat(previous)
@@ -83,6 +89,12 @@ def allocate_daily(data: dict, month_start: date, month_end: date, today: date):
                         "crosses_month": previous_day < month_start,
                         "reset": bool(reset),
                     }
+                    first_day = previous_day + timedelta(days=1) if reading_day > previous_day else reading_day
+                    overlap_start = max(month_start, first_day)
+                    overlap_end = min(month_end, reading_day, end)
+                    overlap_days = max(0, (overlap_end - overlap_start).days + 1)
+                    item["monthly_amount"] = delta * overlap_days / span
+                    item["monthly_days"] = overlap_days
                     all_intervals[utility].append(item)
                     if month_start <= reading_day <= end:
                         events[utility].append(item.copy())
@@ -151,5 +163,10 @@ def allocate_daily(data: dict, month_start: date, month_end: date, today: date):
         "days": days, "measured": monthly, "status": status,
         "coverage": coverage, "events": events,
         "intervals": all_intervals, "invalid_intervals": invalid,
+        "device_monthly": [
+            {"id": id, **info, "amount": device_monthly.get(id, 0.0),
+             "has_data": any(id in covered[u] and bool(covered[u][id]) for u in units)}
+            for id, info in device_info.items()
+        ],
         "has_data": {u: any(row["has_allocation"][u] for row in days) for u in units},
     }
