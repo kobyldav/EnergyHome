@@ -675,6 +675,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(exc)}, 400)
         if path == "/api/sync/status":
             return self._json(github_sync.status())
+        if path == "/api/sync/diagnose":
+            try:
+                return self._json(github_sync.diagnose())
+            except SyncError as exc:
+                return self._json({"error": str(exc)}, 400)
         if path == "/health":
             return self._json({
                 "ok": True,
