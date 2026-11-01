@@ -587,6 +587,7 @@ class Handler(BaseHTTPRequestHandler):
             "/static/styles.css": static_dir / "styles.css",
             "/static/i18n.js": static_dir / "i18n.js",
             "/static/app.js": static_dir / "app.js",
+            "/static/monthly.js": static_dir / "monthly.js",
         }
         for asset_url, asset_path in asset_paths.items():
             try:
