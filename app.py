@@ -20,6 +20,7 @@ from urllib.request import urlopen
 
 from energy_app.analytics import dashboard
 from energy_app.periods import financial_position, month_consumption
+from energy_app.actuals import confirmed_month
 from energy_app.storage import JsonStore
 from energy_app.github_sync import GitHubSync, SyncError
 
@@ -586,6 +587,7 @@ class Handler(BaseHTTPRequestHandler):
             "/static/styles.css": static_dir / "styles.css",
             "/static/i18n.js": static_dir / "i18n.js",
             "/static/app.js": static_dir / "app.js",
+            "/static/monthly.js": static_dir / "monthly.js",
         }
         for asset_url, asset_path in asset_paths.items():
             try:
@@ -649,6 +651,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             data = store.load()
             return self._json({"data": data, "dashboard": dashboard(data)})
+        if path == "/api/month-actual":
+            qs = parse_qs(urlparse(self.path).query)
+            try:
+                requested_month = qs.get("month", [""])[0]
+                return self._json(confirmed_month(store.load(), requested_month))
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
         if path == "/api/consumption-days":
             qs = parse_qs(urlparse(self.path).query)
             try:
@@ -701,6 +710,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(github_sync.configure(str(payload.get("repo", "")), str(payload.get("token", ""))))
             if path == "/api/sync/run":
                 return self._json(github_sync.sync(payload.get("preference")))
+            if path == "/api/sync/diagnose":
+                return self._json(github_sync.diagnose())
             if path == "/api/sync/disconnect":
                 return self._json(github_sync.disconnect())
             routes = {

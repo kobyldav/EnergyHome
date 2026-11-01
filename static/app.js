@@ -28,15 +28,17 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function api(url,options={}){
   options.headers={...(options.headers||{}),'Content-Type':'application/json'};
   let lastError;
-  for(let attempt=0;attempt<3;attempt++){
+  const allowRetry=(options.method||'GET').toUpperCase()==='GET';
+  for(let attempt=0;attempt<(allowRetry?3:1);attempt++){
     try{
       const res=await fetch(url,{...options,cache:'no-store'});
       const body=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(body.error||`Chyba ${res.status}`);
+      if(!res.ok) { const err=new Error(body.error||`Chyba ${res.status}`);err.httpStatus=res.status;throw err; }
       return body;
     }catch(err){
       lastError=err;
-      if(attempt<2) await sleep(350+attempt*650);
+      if(allowRetry && !err.httpStatus && attempt<2) await sleep(350+attempt*650);
+      else break;
     }
   }
   throw lastError;
@@ -69,7 +71,7 @@ function renderKindFields(){ const passive=$('#applianceKind').value==='passive'
 function setDateDefaults(){
   const now=new Date(); const local=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString();
   $$('input[type="date"]').forEach(i=>{ if(!i.value) i.value=local.slice(0,10); });
-  $$('input[type="month"]').forEach(i=>{ if(!i.value) i.value=local.slice(0,7); });
+  $$('input[type="month"]').forEach(i=>{ if(i.id!=='dashboardMonthPicker' && !i.value) i.value=local.slice(0,7); });
 }
 
 function renderAll(){
@@ -197,7 +199,7 @@ async function refreshFinancePosition(){
 }
 $$('[data-finance-range]').forEach(btn=>btn.addEventListener('click',()=>setFinanceRange(btn.dataset.financeRange)));
 for(const selector of ['#financeDateFrom','#financeDateTo']){
-  $(selector).addEventListener('change',()=>{
+  $(selector)?.addEventListener('change',()=>{
     if(FINANCE_RANGE_MODE==='custom')refreshFinancePosition().catch(err=>toast(err.message));
   });
 }
@@ -509,7 +511,7 @@ function setSvgAnalyticsRange(range){
   $('#mediaChartExplanation').classList.toggle('hidden',range!=='billing');
   if(STATE) renderSvgAnalytics(STATE.dashboard?.months||[],STATE.dashboard?.billing||{});
 }
-$('#mediaMonthPicker').addEventListener('change',()=>{
+$('#mediaMonthPicker')?.addEventListener('change',()=>{
   if(SVG_ANALYTICS_RANGE==='billing'&&STATE)renderSvgAnalytics(STATE.dashboard.months,STATE.dashboard.billing);
 });
 
@@ -830,6 +832,7 @@ function showGithubSyncStatus(st) {
     details.push('Zvolte řešení níže. Přednost dostane zvolená strana pouze u konfliktních položek; ostatní změny se sloučí.');
   }
   status.innerHTML = details.map(line => '<p>' + line + '</p>').join('');
+  $('#syncTestBtn').disabled = !ready || st.running;
   $('#syncNowBtn').disabled = !ready || st.running;
   $('#syncDisconnectBtn').disabled = !ready || st.running;
   $('#syncLocalBtn').classList.toggle('hidden', !ready || !st.conflicts?.length);
@@ -879,6 +882,18 @@ $('#githubSyncForm').addEventListener('submit', async event => {
   } catch (error) {
     form.elements.token.value = '';
     toast(error.message);
+  }
+});
+$('#syncTestBtn').addEventListener('click', async () => {
+  const output = $('#syncDiagnostics');
+  output.textContent = 'Ověřuji přístup k soukromému datovému repozitáři…';
+  try {
+    const report = await api('/api/sync/diagnose', {method:'POST', body:'{}'});
+    const remote = report.remote_exists ? report.remote_records+' záznamů' : 'zatím žádný soubor';
+    output.textContent = 'Přístup k soukromému repozitáři funguje. V cloudu: '+remote+
+      ', v tomto počítači: '+report.local_records+' záznamů. Zápis i smazání testovacího souboru proběhly úspěšně.';
+  } catch(error) {
+    output.textContent = 'Test připojení selhal: '+error.message;
   }
 });
 $('#syncNowBtn').addEventListener('click', () => syncAction());
