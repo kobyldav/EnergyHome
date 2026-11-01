@@ -40,8 +40,10 @@ jobs:
         run: |
           python -m unittest discover -s tests -v
           node --check static/app.js
+          node --check static/monthly.js
           node --check static/i18n.js
           node tests/frontend_smoke.cjs
+          node tests/monthly_frontend_smoke.cjs
 
       - name: Build Energy Home with PyInstaller
         shell: pwsh
