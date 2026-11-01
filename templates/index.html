@@ -73,7 +73,7 @@
           <div class="balance-row"><div><small>Rozdíl předpisu záloh a vypočtených nákladů</small><strong id="currentBalance">—</strong></div></div>
           <div class="thermometer finance"><div id="thermoFill" class="thermo-fill"></div><div class="thermo-mid"></div></div>
           <div class="thermo-labels"><span>Nedoplatek</span><span>0</span><span>Přeplatek</span></div>
-          <div class="mini-grid"><div><small id="paidTotalLabel">Předepsané zálohy</small><b id="paidTotal">—</b></div><div><small>Náklady z potvrzených odečtů a ceníku</small><b id="actualCost">—</b></div></div>
+          <div class="mini-grid"><div><small id="paidTotalLabel">Předepsané zálohy</small><b id="paidTotal">—</b></div><div><small>Náklady dle odečtů a ceníku</small><b id="actualCost">—</b></div></div>
         </article>
         <article class="card">
           <div class="card-head"><div><p class="eyebrow">DETEKTIV</p><h2>Upozornění</h2></div></div>
@@ -88,22 +88,20 @@
 
       <div class="grid two">
         <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">NÁKLADY</p><h2>Fixní vs. proměnlivé</h2></div></div><svg id="costChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Fixní a proměnlivé náklady"></svg></article>
-        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">ELEKTŘINA</p><h2>Potvrzené přírůstky elektřiny podle data odečtu</h2></div></div><svg id="usageChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Spotřebiče a ostatní používání elektřiny"></svg></article>
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">ELEKTŘINA</p><h2>Průměrná denní spotřeba elektřiny</h2></div></div><svg id="usageChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Spotřebiče a ostatní používání elektřiny"></svg></article>
       </div>
       <div class="grid two">
-        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">SPOTŘEBIČE</p><h2>Potvrzená elektřina podle měřidel</h2></div></div><svg id="applianceChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 300" role="img" aria-label="Rozpad spotřeby podle spotřebičů"></svg></article>
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">SPOTŘEBIČE</p><h2>Spotřeba elektřiny podle měřidel</h2></div></div><svg id="applianceChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 300" role="img" aria-label="Rozpad spotřeby podle spotřebičů"></svg></article>
         <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">CASH FLOW</p><h2>Náklady vs. předepsané zálohy</h2></div></div><svg id="cashflowChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 300" role="img" aria-label="Náklady a zálohy"></svg></article>
       </div>
       <div class="grid two">
         <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">BILANCE</p><h2>Rozdíl záloh a nákladů za měsíc</h2></div></div><svg id="balanceTrendChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Vývoj přeplatku a nedoplatku"></svg></article>
-        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">TOPENÍ</p><h2>Potvrzená spotřeba tepla za měsíc</h2></div></div><svg id="heatingTrendChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Vývoj spotřeby tepla"></svg></article>
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">TOPENÍ</p><h2>Rozpočítaná spotřeba tepla za měsíc</h2></div></div><svg id="heatingTrendChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Vývoj spotřeby tepla"></svg></article>
       </div>
       <article class="card svg-analytics-card">
         <div class="card-head svg-analytics-head">
-          <div><p class="eyebrow">DETAIL MÉDIÍ</p><h2>Odečty a potvrzené přírůstky za měsíc</h2></div>
-          <div class="analytics-range"><span class="help">Období určuje výběr měsíce nahoře.</span></div>
+          <div><p class="eyebrow">DETAIL MÉDIÍ</p><h2>Vývoj spotřeby za měsíc</h2></div>
         </div>
-        <p class="media-chart-explanation">Schodový graf ukazuje jen přírůstky z potvrzených odečtů. Vodorovná část není důkaz nulové denní spotřeby; mezi odečty skutečný denní průběh neznáme. Žádné předpovědi ani rovnoměrné rozpočítávání.</p>
         <div class="media-svg-grid">
           <section class="media-svg-panel" data-utility-panel="electricity">
             <div class="media-svg-head"><div><span class="media-dot media-electricity"></span><h3>Elektřina</h3><small>kWh</small></div><div id="mediaStat-electricity" class="media-svg-stats"></div></div>
@@ -305,8 +303,28 @@
           <label>Měna<input type="text" name="currency" value="CZK"></label>
           <label>Citlivost detektiva [%]<input type="number" step="1" min="0" name="unassigned_alert_ratio_pct" value="30"></label>
           <label>Kontrola smluv každých [měsíců]<input type="number" step="1" min="1" max="24" name="contract_review_interval_months" value="6"></label>
+          <label class="full">Vytápění
+            <select name="heat_accounting_mode" id="heatAccountingMode">
+              <option value="house">Vlastní zdroj / přímé měření tepla</option>
+              <option value="apartment">Bytový dům · rozúčtování dle plochy a dílků</option>
+            </select>
+          </label>
+          <div id="apartmentHeatFields" class="full heating-settings-fields hidden">
+            <p class="help"><strong>Orientační roční rozúčtování tepla</strong> – údaje ze společného vyúčtování domu za stejný rok. Základní složka podle započitatelné plochy, spotřební podle korigovaných dílků. Bez kompletních údajů se cena neodhaduje.</p>
+            <div class="form-grid">
+              <label>Rok vyúčtování<input type="number" name="heat_settlement_year" min="0" max="9999" step="1" placeholder="2026"></label>
+              <label>Základní složka [%]<input type="number" name="heat_base_share_pct" min="30" max="70" step="1" value="50"></label>
+              <label>Započitatelná plocha bytu [m²]<input type="number" name="heat_apartment_area_m2" min="0" step="0.01" placeholder="např. 55"></label>
+              <label>Celková započitatelná plocha domu [m²]<input type="number" name="heat_building_area_m2" min="0" step="0.01" placeholder="např. 2500"></label>
+              <label>Celkové roční náklady domu na vytápění [Kč]<input type="number" name="heat_building_cost_czk" min="0" step="0.01"></label>
+              <label>Korigované dílky bytu za rok<input type="number" name="heat_apartment_units" min="0" step="0.001"></label>
+              <label>Celkem korigovaných dílků domu za rok<input type="number" name="heat_building_units" min="0" step="0.001"></label>
+            </div>
+            <p class="help">Korigované dílky a náklady za celý dům se přebírají z vyúčtování správce. Výpočet neprovádí konečné zákonné korekce a limitní úpravy.</p>
+          </div>
           <button class="btn primary full" type="submit">Uložit nastavení</button>
         </form>
+        <div id="heatSettlementResult" class="notice hidden" aria-live="polite"></div>
         <div class="notice"><strong>Lokální data i bez internetu.</strong><p>Soubor je uložen v <code>%LOCALAPPDATA%\EnergyHome\energy_data.json</code>. Při ukládání vzniká také místní záloha.</p></div>
       </article>
 
