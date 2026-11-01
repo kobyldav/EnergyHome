@@ -215,7 +215,7 @@ Energy Home can optionally share one household dataset through the **GitHub Cont
 2. Give the second partner access to this private repository (Settings → Collaborators).
 3. On each partner's GitHub account, create a **fine-grained personal access token** scoped *only* to the private data repository. Set **Contents: Read and write** (metadata read access is implicit). Keep the tokens separate.
 4. Open Energy Home → **Nastavení → GitHub · synchronizace partnerů** on each Windows computer, enter the data repo's owner/name and that computer's token, and click **Připojit**.
-5. Click **Otestovat připojení** to check private-repository read access, then **Synchronizovat nyní** to test upload/merge. Successful sync is recorded persistently. Changes normally sync approximately every 30 seconds and shortly after saves.
+5. Click **Otestovat připojení** to verify private-repository read/write access (the test briefly creates and deletes a harmless file), then **Synchronizovat nyní** to test upload/merge. Successful sync is recorded persistently. Changes normally sync approximately every 30 seconds and shortly after saves.
 
 The first device uploads its existing local data; an empty second device downloads that dataset. If both devices contain different records, the sync merges them by record identity and settings field. Concurrent incompatible edits or a delete-versus-edit conflict are **not silently overwritten**: the sync stops and shows conflict resolution actions. Resolve only after reviewing changes.
 
