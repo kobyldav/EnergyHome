@@ -69,7 +69,7 @@
       <div class="grid two">
         <article class="card finance-card">
           <div class="card-head"><div><p class="eyebrow">ZÚČTOVÁNÍ</p><h2>Finanční pozice</h2></div><span id="billingPeriod" class="pill">—</span></div>
-          <div class="finance-period-controls"><small id="financePeriodNote" class="finance-period-note">Potvrzená spotřeba za zvolený měsíc.</small></div>
+          <div class="finance-period-controls hidden"><small id="financePeriodNote" class="finance-period-note"></small></div>
           <div class="balance-row"><div><small>Rozdíl předpisu záloh a vypočtených nákladů</small><strong id="currentBalance">—</strong></div></div>
           <div class="thermometer finance"><div id="thermoFill" class="thermo-fill"></div><div class="thermo-mid"></div></div>
           <div class="thermo-labels"><span>Nedoplatek</span><span>0</span><span>Přeplatek</span></div>
@@ -344,8 +344,28 @@
           </div>
         </div>
       </article>
+      <article class="card settings-card debug-settings-card">
+        <div class="card-head"><div><p class="eyebrow">DIAGNOSTIKA</p><h2>Debug</h2></div></div>
+        <p class="help">Zobrazení místního TXT výpisu s verzí aplikace, stavem synchronizace, odečty a výsledky výpočtů. Nic se automaticky neodesílá.</p>
+        <button type="button" id="debugOpenBtn" class="btn secondary">Otevřít Debug</button>
+      </article>
     </section>
   </main>
+</div>
+
+<div id="debugModal" class="debug-modal hidden" role="presentation">
+  <section class="debug-dialog" role="dialog" aria-modal="true" aria-labelledby="debugTitle">
+    <div class="debug-dialog-head">
+      <div><p class="eyebrow">DIAGNOSTIKA</p><h2 id="debugTitle">Debug · TXT výpis</h2></div>
+      <button type="button" id="debugCloseBtn" class="btn secondary small" aria-label="Zavřít debug">Zavřít</button>
+    </div>
+    <p class="debug-privacy">Výpis obsahuje údaje o spotřebě, domácnosti a cenách. Před sdílením jej zkontrolujte. Přístupové tokeny a hesla jsou skryté.</p>
+    <textarea id="debugText" class="debug-text" readonly spellcheck="false" aria-label="Diagnostický výpis v TXT"></textarea>
+    <div class="debug-dialog-actions">
+      <small id="debugStatus" role="status" aria-live="polite">Načítám…</small>
+      <button type="button" id="debugCopyBtn" class="btn primary" disabled>Kopírovat TXT</button>
+    </div>
+  </section>
 </div>
 
 <a
@@ -373,5 +393,6 @@
 <script src="/static/i18n.js"></script>
 <script src="/static/app.js"></script>
 <script src="/static/monthly.js"></script>
+<script src="/static/debug.js"></script>
 </body>
 </html>

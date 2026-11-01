@@ -340,3 +340,16 @@ button,input,select{font:inherit}
 .dashboard-month-filter input{border:1px solid var(--line-strong);padding:9px 12px;border-radius:4px;color:var(--text);background:#fff;font:inherit;font-size:14px;min-width:165px}
 .kpi small[id^="kpiNote-"]{line-height:1.4;min-height:33px;display:block}
 @media(max-width:650px){.topbar{flex-wrap:wrap;gap:12px}.dashboard-month-filter{margin:0;width:100%}.dashboard-month-filter input{width:100%}}
+
+/* Compact diagnostics modal – follows the flat EnergyHome visual system. */
+.debug-settings-card{margin-top:22px;margin-bottom:22px}
+.debug-modal{position:fixed;inset:0;z-index:1400;background:rgba(8,23,25,.56);display:flex;justify-content:center;align-items:center;padding:24px}
+.debug-dialog{background:var(--surface);border:1px solid var(--line-strong);width:min(960px,100%);height:min(750px,calc(100vh - 48px));display:flex;flex-direction:column;min-height:350px;padding:22px;box-shadow:0 20px 70px rgba(0,0,0,.2)}
+.debug-dialog-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:1px solid var(--line);padding-bottom:15px}
+.debug-dialog-head h2{font-size:20px;margin:5px 0 0}
+.debug-privacy{font-size:12px;color:var(--muted);line-height:1.6;margin:15px 0}
+.debug-text{width:100%;flex:1;min-height:0;resize:none;background:#f7f9f9;border:1px solid var(--line-strong);padding:15px;font:12px/1.55 Consolas,"Courier New",monospace;white-space:pre;tab-size:2;color:var(--text)}
+.debug-dialog-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:15px}
+.debug-dialog-actions small{color:var(--muted);font-size:12px}
+.heat-interval-heading{font-size:14px;margin:20px 0 12px}
+@media(max-width:650px){.debug-modal{padding:8px}.debug-dialog{height:calc(100vh - 16px);padding:14px}.debug-dialog-actions{flex-wrap:wrap}.debug-dialog-actions .btn{width:100%}}

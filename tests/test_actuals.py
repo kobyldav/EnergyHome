@@ -75,6 +75,40 @@ class ConfirmedMonthTests(unittest.TestCase):
         self.assertEqual(result["measured"]["heat"], 30)
         self.assertEqual(result["status"]["heat"], "complete")
 
+    def test_radiators_show_real_readings_that_cross_month_without_guessing_cost(self):
+        # Reproduces a real situation: Sep 21 -> Oct 21 -> Nov 1.
+        data = self.base()
+        data["heat_allocators"] = [
+            {"id": "loznice", "name": "U okna", "room": "Ložnice",
+             "base_date": "2026-09-21", "base_value": 0, "coefficient": 1},
+            {"id": "kuchyne", "name": "U okna", "room": "Kuchyně",
+             "base_date": "2026-09-21", "base_value": 0, "coefficient": 1},
+            {"id": "obyvak", "name": "U okna", "room": "Obývací pokoj",
+             "base_date": "2026-09-21", "base_value": 0, "coefficient": 1},
+        ]
+        data["heat_allocator_readings"] = [
+            {"id": "l1", "allocator_id": "loznice", "date": "2026-10-21", "value": 4},
+            {"id": "l2", "allocator_id": "loznice", "date": "2026-11-01", "value": 31},
+            {"id": "k1", "allocator_id": "kuchyne", "date": "2026-10-21", "value": 2},
+            {"id": "k2", "allocator_id": "kuchyne", "date": "2026-11-01", "value": 23},
+            {"id": "o1", "allocator_id": "obyvak", "date": "2026-11-01", "value": 2},
+        ]
+        october = confirmed_month(data, "2026-10", date(2026, 11, 1))
+        november = confirmed_month(data, "2026-11", date(2026, 11, 1))
+        self.assertEqual(october["heat_reading_total"], 6)
+        self.assertEqual(october["heat_cross_month_count"], 2)
+        self.assertIsNone(october["measured"]["heat"])
+        self.assertEqual({row["room"] for row in october["heat_reading_intervals"]},
+                         {"Ložnice", "Kuchyně"})
+        self.assertEqual(november["heat_reading_total"], 50)
+        self.assertEqual(november["heat_cross_month_count"], 3)
+        self.assertEqual({row["amount"] for row in november["heat_reading_intervals"]},
+                         {2, 21, 27})
+        self.assertIsNone(november["measured"]["heat"])
+        # An interval across a calendar boundary must not become a
+        # guessed month cost or a fabricated daily consumption estimate.
+        self.assertEqual(november["variable_costs"]["heat"], 0)
+
     def test_missing_and_invalid_month(self):
         data = self.base()
         result = confirmed_month(data, "2026-10", today=date(2026, 11, 1))
