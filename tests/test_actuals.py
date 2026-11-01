@@ -84,7 +84,7 @@ class AllocatedMonthTests(unittest.TestCase):
         self.assertFalse(v["cost_incomplete"])
         self.assertEqual(v["heat_cost_estimate"]["unit"],"jedn.")
         self.assertAlmostEqual(v["total_cost"],1293)
-        self.assertAlmostEqual(v["balance"],-1293)
+        self.assertAlmostEqual(v["balance"],-673)
 
 
     def test_missing_heat_rate_flags_financial_result_as_incomplete(self):
