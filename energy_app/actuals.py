@@ -139,15 +139,37 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         u: values[u] * float(tariff.get(UTILITIES[u]["price"], 0) or 0)
         for u in UTILITIES
     }
-    # Heating radiator allocators are dimensionless distribution units, NOT
-    # heat meters in GJ. Never multiply them by a price per GJ.
+    # Backward-compatible field name heat_per_gj has always been displayed
+    # in the tariff form as CZK / provisional unit for radiator allocators.
+    # Therefore it is an explicitly configured estimated unit price in this
+    # mode, *not* a conversion from radiator units to GJ. For a real heat
+    # meter (without allocators) it remains the measured GJ tariff.
+    heat_rate = float(tariff.get("heat_per_gj", 0) or 0)
     if heat_uses_allocators:
-        variable_costs["heat"] = 0.0
+        if heat_rate <= 0:
+            variable_costs["heat"] = 0.0
+        # For positive tariff, the initial variable_costs calculation already
+        # contains allocated radiator units multiplied by the configured rate.
+    heat_cost_estimate = {
+        "mode": (
+            "allocator_unit_estimate" if heat_uses_allocators and heat_rate > 0
+            else "missing_allocator_rate" if heat_uses_allocators
+            else "metered_gj"
+        ),
+        "quantity": values["heat"] if allocated["has_data"]["heat"] else None,
+        "rate": heat_rate,
+        "unit": "jedn." if heat_uses_allocators else "GJ",
+        "variable_cost": variable_costs["heat"],
+        "provisional": bool(heat_uses_allocators),
+        "incomplete": bool(heat_uses_allocators and heat_rate <= 0 and allocated["has_data"]["heat"]),
+    }
     fixed_costs = {
         u: fraction * float(tariff.get(UTILITIES[u]["fixed"], 0) or 0)
         for u in UTILITIES
     }
     utility_costs = {u: variable_costs[u] + fixed_costs[u] for u in UTILITIES}
+    heat_cost_estimate["fixed_cost"] = fixed_costs["heat"]
+    heat_cost_estimate["total_cost"] = utility_costs["heat"]
     total_cost = sum(utility_costs.values())
     advance = fraction * sum(float(advances.get(u + "_monthly", 0) or 0) for u in UTILITIES)
 
@@ -169,8 +191,10 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         "heat_cross_month_count": sum(bool(row["crosses_month"]) for row in heat_reading_intervals),
         "variable_costs": variable_costs, "fixed_costs": fixed_costs,
         "utility_costs": utility_costs, "total_cost": total_cost,
+        "heat_cost_estimate": heat_cost_estimate,
+        "cost_incomplete": heat_cost_estimate["incomplete"],
         "advance": advance, "balance": advance - total_cost,
         "fixed_fraction": fraction,
         "tariff": tariff, "advance_rule": advances,
-        "cost_note": "Objemy rozpočítány rovnoměrně mezi odečty; žádná předpověď. Radiátorové dílky nejsou GJ ani konečné vyúčtování tepla.",
+        "cost_note": "Měsíční přírůstky vycházejí z odečtů a rovnoměrného rozpočítání mezi dny. Cena radiátorových jednotek je pouze uživatelský orientační odhad, nikoli oficiální vyúčtování domu.",
     }

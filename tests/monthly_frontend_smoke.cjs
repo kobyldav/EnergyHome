@@ -67,6 +67,13 @@ async function fetch(url) {
       variable_costs:Object.fromEntries(utilities.map(u=>[u,u==="electricity"?200:0])),
       utility_costs:Object.fromEntries(utilities.map(u=>[u,u==="electricity"?205:0])),
       total_cost:205,advance:250,balance:45,
+      cost_incomplete:month==='2026-09',
+      heat_cost_estimate:{
+        mode:month==='2026-10'?'allocator_unit_estimate':'missing_allocator_rate',
+        quantity:5,rate:month==='2026-10'?5:0,
+        variable_cost:month==='2026-10'?25:0,
+        fixed_cost:10,total_cost:month==='2026-10'?35:10
+      },
       days:Array.from({length:10},(_,i)=>({
         day:i+1,date:month+'-'+String(i+1).padStart(2,'0'),
         measured:{electricity:10,cold_water:0,hot_water:0,gas:0,heat:0},
@@ -100,6 +107,8 @@ async function flush() {
   assert.equal($("#kpiColdWater").textContent,"—");
   assert($("#actualCost").textContent.includes("205"),"Confirmed costs should be visible");
   assert($("#billingPeriod").textContent.includes("2026"),"Financial card shares month");
+  assert($("#heatCostDetails").innerHTML.includes("orientační náklady"),"Configured radiator unit price has visible breakdown");
+  assert($("#heatCostDetails").innerHTML.includes("spotřební část"),"Variable heat cost must appear in finance");
   assert($("#mediaChart-electricity").innerHTML.includes(" L "),"Cumulative interpolated line must connect daily points");
   assert(!$("#mediaChart-electricity").innerHTML.includes(" H "),"Chart must not use staircase H commands");
   assert(!$("#mediaChart-gas").innerHTML.includes("svg-grid-line"),"Missing readings have no axes");
@@ -109,6 +118,8 @@ async function flush() {
   handler.callback();
   await flush();
   assert($("#billingPeriod").textContent.includes("Září 2026"),"All panels update together");
+  assert.equal($("#currentBalance").textContent,"Neúplné","Missing heat rate must not show complete balance");
+  assert($("#heatCostDetails").innerHTML.includes("chybí cena dílku"),"Missing rate explained");
   assert(calls>=3,"Month and application data should be requested");
   console.log("Month-first frontend integration smoke passed");
 })().catch(err=>{console.error(err);process.exitCode=1});

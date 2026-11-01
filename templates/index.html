@@ -74,6 +74,7 @@
           <div class="thermometer finance"><div id="thermoFill" class="thermo-fill"></div><div class="thermo-mid"></div></div>
           <div class="thermo-labels"><span>Nedoplatek</span><span>0</span><span>Přeplatek</span></div>
           <div class="mini-grid"><div><small id="paidTotalLabel">Předepsané zálohy</small><b id="paidTotal">—</b></div><div><small>Náklady dle odečtů a ceníku</small><b id="actualCost">—</b></div></div>
+          <div id="heatCostDetails" class="heat-cost-details hidden" aria-live="polite"></div>
         </article>
         <article class="card">
           <div class="card-head"><div><p class="eyebrow">DETEKTIV</p><h2>Upozornění</h2></div></div>
@@ -245,7 +246,7 @@
         <article class="card"><div class="card-head"><div><p class="eyebrow">HISTORIE</p><h2>Odečty topení</h2></div></div><div class="table-wrap"><table><thead><tr><th>Datum</th><th>Místnost / měřič</th><th>Stav</th><th>Rozdíl</th><th></th></tr></thead><tbody id="heatAllocatorReadingsTable"></tbody></table></div></article>
       </div>
 
-      <div class="notice"><strong>Provizorní definice tepla.</strong><p>Celková spotřeba tepla se nyní počítá jako součet přepočtených přírůstků všech radiátorových měřičů. Tato hodnota se používá jako „Teplo“ v dashboardu i ve finančním výpočtu. Jednotka zatím není ověřená GJ a později ji lze nahradit přesným převodem.</p></div>
+      <div class="notice"><strong>Rozpočítání radiátorů.</strong><p>Přírůstky se počítají v korigovaných radiátorových dílcích. Měsíční finanční odhad používá uživatelem stanovenou cenu za dílek z Ceníku a fixní náklady, ale není konečným vyúčtováním bytového domu.</p></div>
     </section>
 
     <section id="tab-tariffs" class="tab-panel">
@@ -259,7 +260,10 @@
             <label>Studená voda [Kč/m³]<input type="number" step="0.0001" name="cold_water_per_m3" value="0"></label>
             <label>Teplá voda [Kč/m³]<input type="number" step="0.0001" name="hot_water_per_m3" value="0"></label>
             <label>Plyn [Kč/m³]<input type="number" step="0.0001" name="gas_per_m3" value="0"></label>
-            <label>Teplo [Kč / provizorní jednotku]<input type="number" step="0.0001" name="heat_per_gj" value="0"></label>
+            <label>Teplo – sazba [Kč / radiátorový dílek nebo Kč/GJ]
+              <input type="number" min="0" step="0.0001" name="heat_per_gj" value="0">
+            </label>
+            <p class="help full">U radiátorových dílků jde o tebou zadaný <strong>orientační odhad ceny za přepočtenou jednotku</strong>. U samostatného měřiče tepla se používá cena za GJ. Rozúčtování bytového domu může být odlišné.</p>
             <div class="full tariff-separator"><strong>Fixní poplatky za měsíc</strong><span>Každé médium má vlastní fixní část.</span></div>
             <label>Elektřina – fix [Kč/měsíc]<input type="number" step="0.01" name="electricity_fixed_monthly" value="0"></label>
             <label>Studená voda – fix [Kč/měsíc]<input type="number" step="0.01" name="cold_water_fixed_monthly" value="0"></label>
