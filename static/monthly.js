@@ -75,8 +75,8 @@
 
     drawCostChart([m]);
     // Appliance share is only a configured model, never an actual device reading.
-    svgChartEmpty('#usageChart','Rozdělení podle spotřebičů nelze ověřit bez jejich samostatných měřidel.',760,280);
-    svgChartEmpty('#applianceChart','Odhady spotřebičů jsou skryté. Zde se zobrazují jen ověřitelné odečty.',760,300);
+    drawElectricIntervals(v);
+    drawElectricMeters(v);
     drawCashflowChart([m]);
     drawBalanceTrendChart([m]);
     drawHeatingTrendChart([m]);
@@ -85,6 +85,51 @@
     renderCostSankey([m]);
     renderMonthHeat(v);
     for (const u of utilities) drawActualReadingChart(u,v);
+  }
+
+  // The bars show actual between-reading deltas, not estimated appliance use.
+  function drawElectricIntervals(v){
+    const svg=$('#usageChart'),W=760,H=280,left=82,right=24,top=38,bottom=49;
+    const grouped=new Map();
+    for(const e of (v.events?.electricity||[])){
+      const key=e.date;
+      grouped.set(key,(grouped.get(key)||0)+Number(e.amount||0));
+    }
+    const rows=[...grouped].sort((a,b)=>a[0].localeCompare(b[0]));
+    if(!rows.length){svgChartEmpty('#usageChart','Nejsou potvrzené přírůstky elektřiny za měsíc.',W,H);return;}
+    const max=Math.max(0.001,...rows.map(r=>r[1]));
+    const g=svgYAxis(W,H,0,max*1.08,left,right,top,bottom,val=>nf.format(val)+' kWh');
+    const slot=g.plotW/rows.length,bw=Math.min(48,slot*.55);
+    const bars=rows.map(([day,value],i)=>{
+      const cx=left+(i+.5)*slot,hh=value/(max*1.08)*g.plotH;
+      const label=rows.length<=10||i%Math.max(1,Math.ceil(rows.length/10))===0 ? day.slice(-2)+'.' : '';
+      return '<rect class="svg-bar-primary" x="'+(cx-bw/2)+'" y="'+(g.base-hh)+'" width="'+bw+'" height="'+hh+'"><title>'+svgSafe(day)+' · '+svgSafe(nf.format(value))+' kWh</title></rect>'+
+        (label?'<text class="svg-axis-text" x="'+cx+'" y="'+(H-15)+'" text-anchor="middle">'+label+'</text>':'');
+    }).join('');
+    svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+g.grid+bars+
+      '<text class="svg-unit-label" x="'+left+'" y="18">Z ROZDÍLŮ ODEČTŮ</text>';
+  }
+
+  function drawElectricMeters(v){
+    const svg=$('#applianceChart'),W=760,H=300,left=205,right=95,top=31;
+    const grouped=new Map();
+    for(const e of (v.events?.electricity||[])){
+      const key=e.id||e.name;
+      const current=grouped.get(key)||{name:e.name,amount:0};
+      current.amount+=Number(e.amount||0);
+      grouped.set(key,current);
+    }
+    const rows=[...grouped.values()].sort((a,b)=>b.amount-a.amount);
+    if(!rows.length){svgChartEmpty('#applianceChart','Bez potvrzených odečtů elektroměrů.',W,H);return;}
+    const max=Math.max(0.001,...rows.map(r=>r.amount));
+    const rh=Math.min(35,(H-top-18)/rows.length),width=W-left-right;
+    const lines=rows.slice(0,8).map((r,i)=>{
+      const y=top+i*rh,barWidth=width*r.amount/max;
+      return '<text class="svg-category-label" x="'+(left-12)+'" y="'+(y+17)+'" text-anchor="end">'+svgSafe(r.name)+'</text>'+
+        '<rect x="'+left+'" y="'+(y+4)+'" width="'+barWidth+'" height="21" class="svg-bar-primary"><title>'+svgSafe(r.name)+' · '+nf.format(r.amount)+' kWh</title></rect>'+
+        '<text class="svg-value-label" x="'+Math.min(W-85,left+barWidth+8)+'" y="'+(y+19)+'">'+nf.format(r.amount)+' kWh</text>';
+    }).join('');
+    svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+lines;
   }
 
   function renderMonthHeat(v){
