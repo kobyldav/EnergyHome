@@ -91,9 +91,9 @@
   function drawElectricIntervals(v){
     const svg=$('#usageChart'),W=760,H=280,left=82,right=24,top=38,bottom=49;
     const grouped=new Map();
-    for(const e of (v.events?.electricity||[])){
-      const key=e.date;
-      grouped.set(key,(grouped.get(key)||0)+Number(e.amount||0));
+    for(const d of (v.days||[])){
+      if(!d.has_allocation?.electricity)continue;
+      grouped.set(d.date,Number(d.measured?.electricity||0));
     }
     const rows=[...grouped].sort((a,b)=>a[0].localeCompare(b[0]));
     if(!rows.length){svgChartEmpty('#usageChart','Nejsou potvrzené přírůstky elektřiny za měsíc.',W,H);return;}
@@ -113,11 +113,9 @@
   function drawElectricMeters(v){
     const svg=$('#applianceChart'),W=760,H=300,left=205,right=95,top=31;
     const grouped=new Map();
-    for(const e of (v.events?.electricity||[])){
-      const key=e.id||e.name;
-      const current=grouped.get(key)||{name:e.name,amount:0};
-      current.amount+=Number(e.amount||0);
-      grouped.set(key,current);
+    for(const e of (v.monthly_devices||[])){
+      if(e.utility!=='electricity'||!e.has_data)continue;
+      grouped.set(e.id,{name:e.name,amount:Number(e.amount||0)});
     }
     const rows=[...grouped.values()].sort((a,b)=>b.amount-a.amount);
     if(!rows.length){svgChartEmpty('#applianceChart','Bez potvrzených odečtů elektroměrů.',W,H);return;}
