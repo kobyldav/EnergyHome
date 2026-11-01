@@ -71,7 +71,7 @@ function renderKindFields(){ const passive=$('#applianceKind').value==='passive'
 function setDateDefaults(){
   const now=new Date(); const local=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString();
   $$('input[type="date"]').forEach(i=>{ if(!i.value) i.value=local.slice(0,10); });
-  $$('input[type="month"]').forEach(i=>{ if(!i.value) i.value=local.slice(0,7); });
+  $('input[type="month"]').forEach(i=>{ if(i.id!=='dashboardMonthPicker' && !i.value) i.value=local.slice(0,7); });
 }
 
 function renderAll(){
