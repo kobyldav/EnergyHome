@@ -21,7 +21,7 @@ def apartment_heat_estimate(settings: dict) -> dict:
         except (ValueError, TypeError):
             values[key] = 0
     base_pct = float(settings.get("heat_base_share_pct", 50) or 50)
-    missing = [key for key in keys if values[key] <= 0]
+    missing = [key for key in keys if values[key] <= 0 and key != "heat_apartment_units"]
     if missing:
         return {"ready": False, "missing": missing, "reason": "Doplňte údaje za stejný zúčtovací rok."}
     own_area = values["heat_apartment_area_m2"]
@@ -29,7 +29,7 @@ def apartment_heat_estimate(settings: dict) -> dict:
     own_units = values["heat_apartment_units"]
     house_units = values["heat_building_units"]
     cost = values["heat_building_cost_czk"]
-    if (own_area > house_area or own_units > house_units or
+    if (own_area > house_area or own_units < 0 or own_units > house_units or
             not all(math.isfinite(v) for v in values.values()) or
             not math.isfinite(base_pct) or not 30 <= base_pct <= 70):
         return {"ready": False, "missing": [], "reason": "Prověřte údaje: podíly musí být platné a základní složka 30–70 %."}
