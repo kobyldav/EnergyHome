@@ -60,12 +60,41 @@
       const note = $('#kpiNote-'+u);
       if (note) note.textContent = statusText(v,u);
     }
-    $('#kpiCost').textContent = money(v.total_cost);
-    $('#kpiMonth').textContent = monthName(v.month) + (v.as_of && v.as_of < v.end ? ' · k '+v.as_of : '');
+    $('#kpiCost').textContent = money(v.total_cost) + (v.cost_incomplete ? ' + teplo' : '');
+    const heatPrice = v.heat_cost_estimate;
+    $('#kpiMonth').textContent = monthName(v.month) +
+      (v.as_of && v.as_of < v.end ? ' · k '+v.as_of : '') +
+      (heatPrice?.mode==='allocator_unit_estimate' ? ' · orientačně' : '');
+
     drawFinancialPosition(v);
+    const heatInfo=$('#heatCostDetails');
+    if(heatInfo){
+      if(heatPrice?.mode==='allocator_unit_estimate' && heatPrice.quantity != null){
+        heatInfo.classList.remove('hidden');
+        heatInfo.innerHTML='<span class="heat-cost-caption">Teplo · orientační náklady</span>'+
+          '<span>'+nf.format(heatPrice.quantity)+' jedn. × '+money(heatPrice.rate)+
+          ' = <strong>'+money(heatPrice.variable_cost)+'</strong> spotřební část</span>'+
+          '<span>+ '+money(heatPrice.fixed_cost)+' fixně = <strong>'+money(heatPrice.total_cost)+'</strong> za teplo</span>';
+      }else if(v.cost_incomplete){
+        heatInfo.classList.remove('hidden');
+        heatInfo.innerHTML='<span class="heat-cost-caption">Teplo · chybí cena dílku</span>'+
+          '<span>Spotřeba '+nf.format(heatPrice?.quantity||0)+
+          ' jedn. je evidovaná, ale není stanovená orientační jednotková cena v Ceníku.</span>';
+      }else{
+        heatInfo.innerHTML='';
+        heatInfo.classList.add('hidden');
+      }
+    }
+    if(v.cost_incomplete){
+      $('#currentBalance').textContent='Neúplné';
+      $('#actualCost').textContent=money(v.total_cost)+' + teplo';
+      $('#thermoFill').style.width='0%';
+    }
     const notes = [];
 
-    if (utilities.some(u=>v.status[u]==='partial'))
+    if (v.cost_incomplete)
+      notes.push({severity:'warning',text:'Spotřeba tepla je započtená v dílcích, ale její cena není zadaná. Finanční výsledek je neúplný. Doplň sazbu za jednotku v Ceníku.'});
+        if (utilities.some(u=>v.status[u]==='partial'))
       notes.push({severity:'warning',text:'Některé odečty pokrývají jen část zvoleného měsíce. Součet není jeho celková spotřeba.'});
 
 
@@ -244,6 +273,7 @@
     if(!displayed || displayed.month!==picker.value) {
       for(const [, [selector]] of Object.entries(byUtility))$(selector).textContent='—';
       $('#kpiCost').textContent='—';
+      $('#heatCostDetails')?.classList.add('hidden');
       drawFinancialPosition(null);
       for(const u of utilities) {
         svgChartEmpty('#mediaChart-'+u,'Načítám skutečné odečty…',760,240);
