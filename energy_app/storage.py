@@ -16,6 +16,14 @@ DEFAULT_DATA = {
         "unassigned_alert_ratio": 0.30,
         "contract_review_interval_months": 6,
         "contract_last_reviewed": "",
+        "heat_accounting_mode": "house",
+        "heat_settlement_year": 0,
+        "heat_base_share_pct": 50.0,
+        "heat_apartment_area_m2": 0.0,
+        "heat_building_area_m2": 0.0,
+        "heat_building_cost_czk": 0.0,
+        "heat_apartment_units": 0.0,
+        "heat_building_units": 0.0,
     },
     "meters": [],
     "meter_readings": [],
@@ -39,6 +47,10 @@ def migrate(data: dict) -> dict:
     data = deepcopy(data) if isinstance(data, dict) else {}
     for key, value in DEFAULT_DATA.items():
         data.setdefault(key, deepcopy(value))
+    if not data["settings"].get("heat_accounting_mode"):
+        # Existing households with radiator allocators are normally centrally
+        # heated apartments; the user can change the mode in Settings.
+        data["settings"]["heat_accounting_mode"] = "apartment" if data.get("heat_allocators") else "house"
     for key, value in DEFAULT_DATA["settings"].items():
         data["settings"].setdefault(key, value)
 
