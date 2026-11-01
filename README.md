@@ -103,26 +103,36 @@ The source application prints its URL and actual database path. Disconnect
 GitHub sync or leave it unconfigured for purely local test runs. Never
 copy the private database into the Git working tree or commit it.
 
-### Flexible finance and day-by-day consumption
+### Month-first dashboard (upcoming change in this branch)
 
-The dashboard's **Financial Position** card can display the original household
-billing cycle (unchanged default), the current calendar month, or a manually
-selected start/end date. Custom dates are an analysis filter, **not** a change
-to stored household settings. In custom/current-month views, monthly advances
-and fixed fees are prorated by calendar day, and remaining variable costs are
-forecasts estimated from previously observed daily consumption. These numbers
-are estimates, not verified bank payment transactions.
+Every dashboard chart and KPI now follows the **same month** selected in the header.
+The old billing-cycle/current-month/custom-date/12-month mixtures and visible
+forecast numbers have been removed from the dashboard. The finance panel shows
+only costs calculated from observed counter increments plus proportional fixed
+fees from saved tariffs. **Scheduled advances are not verified bank payments**,
+and calculated costs are not a supplier invoice.
 
-In **Individual Consumption Trends**, the **Billing Period** button becomes a
-**single selected month** with a dynamically scaled day-of-month x-axis
-(up to the last observed reading, never into future days), plus a month picker. The curve shows **cumulative consumption since the beginning of the selected
-month**, not individual day-to-day deltas. Several readings on the same date
-are combined and reading dates are marked. The chart ends at the last
-observed/allocated day, and a medium without usable consumption data shows
-only an empty-state message (no axes). Days between readings show interpolated
-daily estimates, **not directly measured daily consumption**. The existing
-**Last 12 Months** graph remains a monthly overview. The Sankey chart retains
-its established billing-cycle and 12-month scopes.
+The `/api/month-actual?month=YYYY-MM` endpoint returns evidence-only consumption:
+
+- Each nonnegative difference must have two actual, dated counter states.
+- The whole interval must belong to the selected calendar month. A difference
+  spanning a month boundary is **not** guessed or allocated to either month.
+- A **complete** month requires readings at the end of the previous month and
+  the end of the selected month for **every meter of that utility**.
+- A **partial** month contains only confirmed in-month intervals, never the
+  presumed full-month amount. Missing intervals are shown as missing, not zero.
+- The day chart shows increases **only on reading dates** as a step graph.
+  Flat sections do **not** imply zero use on those days; daily consumption
+  cannot be recovered from occasional cumulative meter readings.
+- Radiator allocator readings with resets and coefficients are respected.
+  Allocator units are not automatically GJ.
+- Existing historical data and local backups are preserved. The older
+  interpolation-based endpoints remain for backwards compatibility, but are
+  not used by the new dashboard.
+
+If precise calendar-month totals matter, take readings on the last day of
+each month. A single mid-month reading cannot establish the true monthly
+amount without a measurement at the boundary.
 
 ### Czech and English interface
 
@@ -205,7 +215,7 @@ Energy Home can optionally share one household dataset through the **GitHub Cont
 2. Give the second partner access to this private repository (Settings → Collaborators).
 3. On each partner's GitHub account, create a **fine-grained personal access token** scoped *only* to the private data repository. Set **Contents: Read and write** (metadata read access is implicit). Keep the tokens separate.
 4. Open Energy Home → **Nastavení → GitHub · synchronizace partnerů** on each Windows computer, enter the data repo's owner/name and that computer's token, and click **Připojit**.
-5. Use **Synchronizovat nyní** to test; then changes normally sync approximately every 30 seconds and shortly after saves.
+5. Click **Otestovat připojení** to check private-repository read access, then **Synchronizovat nyní** to test upload/merge. Successful sync is recorded persistently. Changes normally sync approximately every 30 seconds and shortly after saves.
 
 The first device uploads its existing local data; an empty second device downloads that dataset. If both devices contain different records, the sync merges them by record identity and settings field. Concurrent incompatible edits or a delete-versus-edit conflict are **not silently overwritten**: the sync stops and shows conflict resolution actions. Resolve only after reviewing changes.
 
