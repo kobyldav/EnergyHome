@@ -675,11 +675,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(exc)}, 400)
         if path == "/api/sync/status":
             return self._json(github_sync.status())
-        if path == "/api/sync/diagnose":
-            try:
-                return self._json(github_sync.diagnose())
-            except SyncError as exc:
-                return self._json({"error": str(exc)}, 400)
         if path == "/health":
             return self._json({
                 "ok": True,
@@ -715,6 +710,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(github_sync.configure(str(payload.get("repo", "")), str(payload.get("token", ""))))
             if path == "/api/sync/run":
                 return self._json(github_sync.sync(payload.get("preference")))
+            if path == "/api/sync/diagnose":
+                return self._json(github_sync.diagnose())
             if path == "/api/sync/disconnect":
                 return self._json(github_sync.disconnect())
             routes = {
