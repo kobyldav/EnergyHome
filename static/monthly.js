@@ -163,39 +163,55 @@
       rows+'</tbody></table></div>';
   }
 
+  // Connected, linearly interpolated cumulative usage between actual readings.
+  // Linear slopes reflect average intervals, not direct daily measurements.
   function drawActualReadingChart(utility,v){
     const svg=$('#mediaChart-'+utility),stat=$('#mediaStat-'+utility);
     if(!svg||!stat)return;
-    const events=(utility==='heat' ? (v.heat_reading_intervals||[]) : (v.events?.[utility]||[])).filter(x=>x.date<=currentLocalIsoDate())
-      .sort((a,b)=>a.date.localeCompare(b.date));
-    const meta=utilitySvgMeta[utility],W=760,H=240,left=82,right=26,top=30,bottom=45;
-    const total=events.reduce((s,e)=>s+Number(e.amount||0),0);
-    stat.innerHTML = events.length
-      ? '<span><b>'+nf.format(total)+'</b> '+svgSafe(meta.unit)+'</span><span>'+events.length+' potvrzených intervalů</span>'
-      : '<span>Bez potvrzených odečtů</span>';
-    if(!events.length) {
-      svgChartEmpty('#mediaChart-'+utility,'Bez navazujících odečtů ve vybraném měsíci.',W,H);
+    const days=(v.days||[]).filter(d=>d.date<=currentLocalIsoDate());
+    const observed=days.filter(d=>Boolean(d.has_allocation?.[utility]));
+    const meta=utilitySvgMeta[utility],W=760,H=240,left=82,right=24,top=28,bottom=43;
+    const total=observed.reduce((sum,d)=>sum+Number(d.measured?.[utility]||0),0);
+    const count=days.reduce((sum,d)=>sum+Number(d.readings?.[utility]||0),0);
+    stat.innerHTML=observed.length
+      ? '<span><b>'+nf.format(total)+'</b> '+svgSafe(meta.unit)+'</span>'+
+        '<span>'+observed.length+' pokrytých dnů</span><span>'+count+' odečtů</span>'
+      : '<span>Bez navazujících odečtů</span>';
+    if(!observed.length){
+      svgChartEmpty('#mediaChart-'+utility,'Zatím nejsou dostupné odečty.',W,H);
       return;
     }
-    const max=Math.max(0.001,total*1.15),lastDay=Math.max(1,...events.map(x=>Number(x.date.slice(-2))));
-    const g=svgYAxis(W,H,0,max,left,right,top,bottom,v=>nf.format(v));
-    const x=day=>lastDay===1?left+g.plotW/2:left+(day-1)/Math.max(1,lastDay-1)*g.plotW;
-    let cumulative=0,graph='M '+x(1)+' '+g.y(0),markers='';
-    for(const e of events){
-      const day=Number(e.date.slice(-2));
-      const xx=x(day);
-      graph+=' H '+xx;
-      cumulative+=Number(e.amount||0);
-      graph+=' V '+g.y(cumulative);
-      const tip=e.name+': '+e.from+' → '+e.date+' · '+nf.format(e.amount)+' '+meta.unit+
-        (e.crosses_month?' · interval přesahuje předchozí měsíc':'');
-      markers+='<circle cx="'+xx+'" cy="'+g.y(cumulative)+'" r="5" class="svg-reading-marker" style="fill:'+meta.color+'"><title>'+svgSafe(tip)+'</title></circle>';
+    const first=observed[0].day,last=observed[observed.length-1].day;
+    const scaleMax=Math.max(0.001,total*1.12);
+    const plotW=W-left-right,plotH=H-top-bottom;
+    const x=day=>first===last?left+plotW/2:left+(day-first)/(last-first)*plotW;
+    const y=value=>top+plotH-(value/scaleMax)*plotH;
+    const grid=[];
+    for(let i=0;i<=4;i++){
+      const val=scaleMax*(1-i/4),gy=top+plotH*i/4;
+      grid.push('<line class="svg-grid-line" x1="'+left+'" x2="'+(W-right)+'" y1="'+gy+'" y2="'+gy+'"></line>');
+      grid.push('<text class="svg-axis-text" x="'+(left-9)+'" y="'+(gy+4)+'" text-anchor="end">'+svgSafe(nf.format(val))+'</text>');
     }
-    const ticks=[...new Set([1,...events.map(e=>Number(e.date.slice(-2)))])];
+    let cumulative=0,lastCovered=null,path='',markers='';
+    for(const d of days){
+      if(!d.has_allocation?.[utility]){lastCovered=null;continue;}
+      cumulative+=Number(d.measured?.[utility]||0);
+      const xx=x(d.day),yy=y(cumulative);
+      path+=(lastCovered===d.day-1?' L ':' M ')+xx.toFixed(2)+' '+yy.toFixed(2);
+      lastCovered=d.day;
+      if(Number(d.readings?.[utility]||0)>0){
+        markers+='<circle cx="'+xx+'" cy="'+yy+'" r="4.5" style="fill:'+meta.color+'"><title>'+
+          svgSafe(d.date+' · kumulativně '+nf.format(cumulative)+' '+meta.unit)+'</title></circle>';
+      }
+    }
+    const labelStep=Math.max(1,Math.ceil((last-first+1)/9));
+    const labels=observed.filter(d=>d.day===first||d.day===last||(d.day-first)%labelStep===0).map(d=>
+      '<text class="svg-axis-text" x="'+x(d.day)+'" y="'+(H-12)+'" text-anchor="middle">'+d.day+'</text>').join('');
     svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+
-      g.grid+'<path class="svg-media-line" d="'+graph+'" style="stroke:'+meta.color+'"></path>'+markers+
-      ticks.map(day=>'<text class="svg-axis-text" x="'+x(day)+'" y="'+(H-12)+'" text-anchor="middle">'+day+'</text>').join('')+
-      '<text class="svg-unit-label" x="'+left+'" y="15">'+svgSafe(meta.unit)+' · ODEČTY</text>';
+      grid.join('')+
+      '<path class="svg-media-line" d="'+path+'" style="stroke:'+meta.color+'"></path>'+
+      markers+labels+
+      '<text class="svg-unit-label" x="'+left+'" y="14">'+svgSafe(meta.unit)+' · KUMULATIVNĚ</text>';
   }
 
   let requestedKey='';
