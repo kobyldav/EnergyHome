@@ -133,35 +133,34 @@
   }
 
   function renderMonthHeat(v){
-    const box=$('#heatAllocatorDashboard');
-    const heat=v.heat_reading_intervals||[];
-    const entities=STATE.data.heat_allocators||[];
-    if(!entities.length){
-      box.innerHTML='<p class="help">Zatím nejsou založené radiátorové měřiče.</p>';
+    const box = $('#heatAllocatorDashboard');
+    const devices = (v.monthly_devices || []).filter(d => d.utility === 'heat');
+    if(!(STATE.data.heat_allocators || []).length){
+      box.innerHTML='<p class="help">Zatím nejsou evidované radiátorové měřiče.</p>';
       return;
     }
-    if(!heat.length){
-      box.innerHTML='<p class="help">Ve vybraném měsíci zatím nejsou odečty s potvrzeným přírůstkem radiátorových měřičů. Zadané odečty z jiných měsíců zůstávají v historii.</p>';
+    const current = devices.filter(d=>d.has_data);
+    if(!current.length){
+      box.innerHTML='<p class="help">Pro vybraný měsíc zatím nelze rozpočítat spotřebu radiátorů. Jsou potřeba dva odečty.</p>';
       return;
     }
-    const grouped=new Map();
-    for(const item of heat){
-      const room=item.room||'Bez místnosti';
-      const row=grouped.get(room)||{room,amount:0,count:0,overlap:0};
-      row.amount+=Number(item.amount||0);row.count++;row.overlap+=Number(Boolean(item.crosses_month));
-      grouped.set(room,row);
+    const grouped = new Map();
+    for(const d of current){
+      const room = d.room || 'Bez místnosti';
+      const obj = grouped.get(room) || {room,devices:0,value:0};
+      obj.devices++;
+      obj.value += Number(d.amount || 0);
+      grouped.set(room,obj);
     }
     const roomRows=[...grouped.values()].sort((a,b)=>a.room.localeCompare(b.room,'cs')).map(r=>
-      '<tr><td><b>'+escapeHtml(r.room)+'</b></td><td>'+r.count+'</td><td>'+nf.format(r.amount)+' jedn.</td><td>'+(r.overlap?'Včetně minulého měsíce':'V rámci měsíce')+'</td></tr>').join('');
-    const intervalRows=[...heat].sort((a,b)=>a.date.localeCompare(b.date)||a.room.localeCompare(b.room)).map(item=>
-      '<tr><td>'+escapeHtml(item.room)+'</td><td>'+escapeHtml(item.name)+'</td><td>'+escapeHtml(item.from)+' → '+escapeHtml(item.date)+'</td><td><b>'+nf.format(item.amount)+' jedn.</b></td><td>'+(item.crosses_month?'Přes hranici měsíce':'Uvnitř měsíce')+'</td></tr>').join('');
-    const note=v.heat_cross_month_count
-      ? 'Jde o skutečné rozdíly mezi odečty dokončenými ve vybraném měsíci. Část intervalů začala dříve; součet tedy není přesnou spotřebou samotného měsíce a nezapočítává se jako měsíční spotřeba do finančních nákladů.'
-      : 'Přírůstky jsou vypočtené z reálných stavů radiátorových měřičů v tomto měsíci.';
-    box.innerHTML='<p class="help">'+escapeHtml(note)+'</p>'+
-      '<div class="table-wrap dashboard-table"><table><thead><tr><th>Místnost</th><th>Odečty</th><th>Přírůstek</th><th>Pokrytí</th></tr></thead><tbody>'+roomRows+'</tbody></table></div>'+
-      '<h3 class="heat-interval-heading">Jednotlivé odečty</h3>'+
-      '<div class="table-wrap dashboard-table"><table><thead><tr><th>Místnost</th><th>Měřič</th><th>Období odečtu</th><th>Přírůstek</th><th>Typ období</th></tr></thead><tbody>'+intervalRows+'</tbody></table></div>';
+      '<tr><td><b>'+escapeHtml(r.room)+'</b></td><td>'+r.devices+'</td><td><b>'+nf.format(r.value)+' jedn.</b></td></tr>').join('');
+    const rows=current.sort((a,b)=>a.room.localeCompare(b.room,'cs')).map(d=>
+      '<tr><td>'+escapeHtml(d.room)+'</td><td>'+escapeHtml(d.name)+'</td><td><b>'+nf.format(d.amount)+' jedn.</b></td></tr>').join('');
+    box.innerHTML='<div class="table-wrap dashboard-table"><table><thead><tr><th>Místnost</th><th>Radiátory</th><th>Spotřeba za vybraný měsíc</th></tr></thead><tbody>'+
+      roomRows+'</tbody></table></div>'+
+      '<h3 class="heat-interval-heading">Jednotlivé radiátory</h3>'+
+      '<div class="table-wrap dashboard-table"><table><thead><tr><th>Místnost</th><th>Měřič</th><th>Rozpočítané dílky</th></tr></thead><tbody>'+
+      rows+'</tbody></table></div>';
   }
 
   function drawActualReadingChart(utility,v){
