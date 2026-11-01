@@ -63,13 +63,14 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
             delta = value if allow_reset and row.get("reset") else value - previous_value
             prior = previous_date
             # An undated baseline is not a verifiable counter interval.
-            if prior and boundary <= prior < day and first <= observed <= cutoff and delta >= 0:
+            if prior and boundary <= prior <= day and first <= observed <= cutoff and delta >= 0:
                 amount = delta * coefficient
                 values[utility] += amount
                 confirmed[utility] += 1
                 events[utility].append({
                     "date": day, "from": prior, "amount": amount,
                     "name": str(entity.get("name") or ""),
+                    "id": str(entity.get("id") or ""),
                 })
                 if first_verified is None:
                     first_verified = prior
@@ -106,7 +107,7 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         elif complete[utility] == devices[utility] and cutoff == last:
             status[utility] = "complete"
         elif len(coverage[utility]) == devices[utility] and all(
-            entry["starts_at_boundary"] for entry in coverage[utility]
+            entry["starts_at_boundary"] and not entry["invalid"] for entry in coverage[utility]
         ):
             status[utility] = "to_date"
         else:
