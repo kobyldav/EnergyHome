@@ -43,6 +43,7 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
     complete = {u: 0 for u in UTILITIES}
     heat_allocators = data.get("heat_allocators", [])
     heat_uses_allocators = bool(heat_allocators)
+    heat_reading_intervals = []  # Actual intervals finishing in this month; may start earlier.
 
     def consume(utility, entity, rows, coefficient=1.0, allow_reset=False):
         devices[utility] += 1
@@ -62,6 +63,18 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
                 continue
             delta = value if allow_reset and row.get("reset") else value - previous_value
             prior = previous_date
+            # Actual radiator intervals may start in another month. Show them
+            # separately as reading intervals, never as a calendar-month estimate.
+            if (utility == "heat" and heat_uses_allocators and prior
+                    and prior <= day and first <= observed <= cutoff and delta >= 0):
+                heat_reading_intervals.append({
+                    "id": str(entity.get("id") or ""),
+                    "name": str(entity.get("name") or ""),
+                    "room": str(entity.get("room") or "Bez místnosti"),
+                    "from": prior, "date": day, "amount": delta * coefficient,
+                    "crosses_month": prior < boundary,
+                    "reset": bool(row.get("reset")),
+                })
             # An undated baseline is not a verifiable counter interval.
             if prior and boundary <= prior <= day and first <= observed <= cutoff and delta >= 0:
                 amount = delta * coefficient
@@ -151,6 +164,9 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         "days_in_month": len(day_rows), "days": day_rows,
         "measured": {u: values[u] if confirmed[u] else None for u in UTILITIES},
         "status": status, "coverage": coverage, "events": events,
+        "heat_reading_intervals": heat_reading_intervals,
+        "heat_reading_total": sum(row["amount"] for row in heat_reading_intervals),
+        "heat_cross_month_count": sum(bool(row["crosses_month"]) for row in heat_reading_intervals),
         "variable_costs": variable_costs, "fixed_costs": fixed_costs,
         "utility_costs": utility_costs, "total_cost": total_cost,
         "advance": advance, "balance": advance - total_cost,
