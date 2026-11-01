@@ -64,7 +64,7 @@ class AllocatedMonthTests(unittest.TestCase):
         self.assertFalse(v["days"][20]["has_allocation"]["electricity"])
         self.assertNotIn("projected_cost_total",v)
 
-    def test_radiator_reset_and_no_false_gj_price(self):
+    def test_radiator_reset_and_explicit_provisional_unit_price(self):
         data=self.base()
         data["heat_allocators"]=[{"id":"h1","name":"Ložnice","coefficient":2,
                                   "base_date":"2026-09-30","base_value":100}]
@@ -72,11 +72,47 @@ class AllocatedMonthTests(unittest.TestCase):
             {"id":"r1","allocator_id":"h1","date":"2026-10-10","value":110},
             {"id":"r2","allocator_id":"h1","date":"2026-10-31","value":5,"reset":True},
         ]
-        data["tariffs"][0]["heat_per_gj"]=999
+        data["tariffs"][0]["heat_per_gj"]=5
+        data["tariffs"][0]["heat_fixed_monthly"]=833
         v=confirmed_month(data,"2026-10",date(2026,11,1))
         self.assertAlmostEqual(v["measured"]["heat"],30)
         self.assertEqual(v["status"]["heat"],"complete")
+        self.assertAlmostEqual(v["variable_costs"]["heat"],150)
+        self.assertAlmostEqual(v["utility_costs"]["heat"],983)
+        self.assertEqual(v["heat_cost_estimate"]["mode"],"allocator_unit_estimate")
+        self.assertTrue(v["heat_cost_estimate"]["provisional"])
+        self.assertFalse(v["cost_incomplete"])
+        self.assertEqual(v["heat_cost_estimate"]["unit"],"jedn.")
+        self.assertAlmostEqual(v["total_cost"],1293)
+        self.assertAlmostEqual(v["balance"],-1293)
+
+
+    def test_missing_heat_rate_flags_financial_result_as_incomplete(self):
+        data=self.base()
+        data["heat_allocators"]=[{"id":"h","name":"Radiátor","base_date":"2026-09-30",
+                                  "base_value":0,"coefficient":1}]
+        data["heat_allocator_readings"]=[
+            {"id":"r","allocator_id":"h","date":"2026-10-31","value":50}]
+        data["tariffs"][0]["heat_fixed_monthly"]=833
+        v=confirmed_month(data,"2026-10",date(2026,11,1))
+        self.assertEqual(v["measured"]["heat"],50)
+        self.assertEqual(v["heat_cost_estimate"]["mode"],"missing_allocator_rate")
+        self.assertTrue(v["cost_incomplete"])
         self.assertEqual(v["variable_costs"]["heat"],0)
+        self.assertEqual(v["utility_costs"]["heat"],833)
+
+    def test_real_heat_meter_uses_gj_rate_without_provisional_unit_label(self):
+        data=self.base()
+        data["meters"].append({"id":"heat_meter","name":"GJ meter","utility":"heat",
+                               "base_date":"2026-09-30","base_value":10})
+        data["meter_readings"].append({"id":"heat_reading","meter_id":"heat_meter",
+                                      "date":"2026-10-31","value":13})
+        data["tariffs"][0]["heat_per_gj"]=100
+        v=confirmed_month(data,"2026-10",date(2026,11,1))
+        self.assertAlmostEqual(v["variable_costs"]["heat"],300)
+        self.assertEqual(v["heat_cost_estimate"]["mode"],"metered_gj")
+        self.assertEqual(v["heat_cost_estimate"]["unit"],"GJ")
+        self.assertFalse(v["heat_cost_estimate"]["provisional"])
 
     def test_october_november_radiator_split_from_user_scenario(self):
         data=self.base()
@@ -110,6 +146,17 @@ class AllocatedMonthTests(unittest.TestCase):
             expected_oct)
         self.assertAlmostEqual(nov_v["days"][0]["measured"]["heat"],expected_nov)
         self.assertFalse(nov_v["days"][1]["has_allocation"]["heat"])
+        # The existing configured provisional tariff must now affect monthly
+        # finance for each month, without changing the interpolated units.
+        data["tariffs"][0]["heat_per_gj"]=5
+        data["tariffs"][0]["heat_fixed_monthly"]=833
+        oct_priced=confirmed_month(data,"2026-10",date(2026,11,1))
+        nov_priced=confirmed_month(data,"2026-11",date(2026,11,1))
+        self.assertAlmostEqual(oct_priced["variable_costs"]["heat"],expected_oct*5)
+        self.assertAlmostEqual(nov_priced["variable_costs"]["heat"],expected_nov*5)
+        self.assertAlmostEqual(oct_priced["utility_costs"]["heat"],833+expected_oct*5)
+        self.assertAlmostEqual(nov_priced["utility_costs"]["heat"],833/30+expected_nov*5)
+
 
     def test_missing_and_invalid_month(self):
         data=self.base()
