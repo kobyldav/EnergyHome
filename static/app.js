@@ -28,15 +28,17 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function api(url,options={}){
   options.headers={...(options.headers||{}),'Content-Type':'application/json'};
   let lastError;
-  for(let attempt=0;attempt<3;attempt++){
+  const allowRetry=(options.method||'GET').toUpperCase()==='GET';
+  for(let attempt=0;attempt<(allowRetry?3:1);attempt++){
     try{
       const res=await fetch(url,{...options,cache:'no-store'});
       const body=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(body.error||`Chyba ${res.status}`);
+      if(!res.ok) { const err=new Error(body.error||`Chyba ${res.status}`);err.httpStatus=res.status;throw err; }
       return body;
     }catch(err){
       lastError=err;
-      if(attempt<2) await sleep(350+attempt*650);
+      if(allowRetry && !err.httpStatus && attempt<2) await sleep(350+attempt*650);
+      else break;
     }
   }
   throw lastError;
@@ -197,7 +199,7 @@ async function refreshFinancePosition(){
 }
 $$('[data-finance-range]').forEach(btn=>btn.addEventListener('click',()=>setFinanceRange(btn.dataset.financeRange)));
 for(const selector of ['#financeDateFrom','#financeDateTo']){
-  $(selector).addEventListener('change',()=>{
+  $(selector)?.addEventListener('change',()=>{
     if(FINANCE_RANGE_MODE==='custom')refreshFinancePosition().catch(err=>toast(err.message));
   });
 }
@@ -509,7 +511,7 @@ function setSvgAnalyticsRange(range){
   $('#mediaChartExplanation').classList.toggle('hidden',range!=='billing');
   if(STATE) renderSvgAnalytics(STATE.dashboard?.months||[],STATE.dashboard?.billing||{});
 }
-$('#mediaMonthPicker').addEventListener('change',()=>{
+$('#mediaMonthPicker')?.addEventListener('change',()=>{
   if(SVG_ANALYTICS_RANGE==='billing'&&STATE)renderSvgAnalytics(STATE.dashboard.months,STATE.dashboard.billing);
 });
 
