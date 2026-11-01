@@ -13,13 +13,13 @@
     hot_water: ['#kpiHotWater','m³'], gas: ['#kpiGas','m³'], heat: ['#kpiHeat','jedn.']
   };
   const monthName = value => value ? monthsCz[Number(value.slice(5,7))-1] + ' ' + value.slice(0,4) : '—';
-  const noProjection = 'Spotřeba v přehledu vychází ze skutečných odečtů. U radiátorů se zobrazují samostatně přírůstky odečtené v daném měsíci; interval může začínat v předchozím měsíci.';
+  const noProjection = '';
   const statusText = (v, utility) => {
     const status = v.status?.[utility];
-    if (status === 'complete') return 'Úplný měsíc potvrzený odečty';
-    if (status === 'to_date') return 'Potvrzeno k ' + (v.coverage[utility]?.map(x=>x.to).sort().at(-1)||v.as_of);
-    if (status === 'partial') return 'Jen potvrzené intervaly – část měsíce chybí';
-    return 'Chybí dva navazující odečty v měsíci';
+    if (status === 'complete') return 'Rozpočítáno z odečtů za celý měsíc';
+    if (status === 'to_date') return 'Rozpočítáno do posledního odečtu';
+    if (status === 'partial') return 'Rozpočítáno podle odečtů · část měsíce chybí';
+    return 'Chybí návazné odečty';
   };
 
   // Advance amounts in the app are configured monthly rules, not bank payments.
@@ -43,9 +43,9 @@
       start:v.start, end:v.end, paid:v.advance, actual_cost:v.total_cost,
       current_balance:v.balance
     };
-    const displayHeat = Number(v.heat_reading_total||0);
+    const displayHeat = v.measured?.heat;
     const m = {
-      ...v, measured: {...v.measured, heat: v.heat_reading_intervals?.length ? displayHeat : null}, fixed_cost:Object.values(v.fixed_costs).reduce((a,b)=>a+Number(b||0),0),
+      ...v, fixed_cost:Object.values(v.fixed_costs).reduce((a,b)=>a+Number(b||0),0),
       unassigned:Object.fromEntries(utilities.map(u=>[u,Number(v.measured[u]||0)])),
       passive:Object.fromEntries(utilities.map(u=>[u,0])),
       active:Object.fromEntries(utilities.map(u=>[u,0]))
@@ -53,27 +53,22 @@
     const canMeasure = utilities.some(u=>v.status[u]!=='missing');
     $('#emptyHint').classList.toggle('hidden',canMeasure);
     if (!canMeasure) $('#emptyHint').innerHTML =
-      '<strong>Pro '+escapeHtml(monthName(v.month))+' chybí potvrzený rozdíl odečtů.</strong> Zadejte stavy měřidel v tomto měsíci; pro úplnou měsíční spotřebu také stav k poslednímu dni předchozího měsíce a poslednímu dni vybraného měsíce.';
+      '<strong>Pro '+escapeHtml(monthName(v.month))+' zatím chybí odečty.</strong> Zadejte alespoň dva navazující stavy měřidla.';
     for (const [u, [selector,unit]] of Object.entries(byUtility)) {
-      const isHeatReadings = u==='heat' && Boolean(v.heat_reading_intervals?.length);
-      const value = isHeatReadings ? displayHeat : v.measured[u];
+      const value = v.measured?.[u];
       $(selector).textContent = value == null ? '—' : nf.format(value)+' '+unit;
       const note = $('#kpiNote-'+u);
-      if (note) note.textContent = isHeatReadings
-        ? (v.heat_cross_month_count ? 'Přírůstky odečtené v měsíci · část začíná dříve' : 'Přírůstky odečtené v měsíci')
-        : statusText(v,u);
+      if (note) note.textContent = statusText(v,u);
     }
     $('#kpiCost').textContent = money(v.total_cost);
     $('#kpiMonth').textContent = monthName(v.month) + (v.as_of && v.as_of < v.end ? ' · k '+v.as_of : '');
     drawFinancialPosition(v);
     const notes = [];
-    notes.push({severity:'info',text:noProjection});
+
     if (utilities.some(u=>v.status[u]==='partial'))
       notes.push({severity:'warning',text:'Některé odečty pokrývají jen část zvoleného měsíce. Součet není jeho celková spotřeba.'});
-    if (v.heat_cross_month_count)
-      notes.push({severity:'info',text:'Topení: '+v.heat_cross_month_count+' odečtů zahrnuje interval začínající před vybraným měsícem. Přírůstky jsou skutečné, ale nejde o přesnou spotřebu za kalendářní měsíc.'});
-    if (STATE.dashboard?.finance_notes?.heat_definition_provisional)
-      notes.push({severity:'info',text:'Radiátorové dílky nejsou jednotky GJ a náklady na teplo mohou vyžadovat vyúčtování.'});
+
+
     if (STATE.dashboard?.contract_review?.due)
       notes.push({severity:'warning',text:'Je čas zkontrolovat platnost smluv a ceníků.'});
     $('#alerts').innerHTML = notes.map(n=>'<div class="alert '+n.severity+'"><span>'+escapeHtml(n.text)+'</span></div>').join('');
