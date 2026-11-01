@@ -133,10 +133,21 @@ monthly overview groups the attributed units by room/radiator.
 - This is a preliminary arithmetic allocation only; it does not apply
   mandatory per-area bounds, location corrections and other settlement
   adjustments. The building administrator's official annual bill is final.
-- If building-wide data is missing, no apartment heat price is guessed.
-  Radiator distribution units are **never** multiplied by a per-GJ price.
-- The optional annual calculation is kept separate from month-by-month
-  heating readings and monthly finance totals.
+- For the monthly dashboard, the existing **Teplo** tariff field labelled
+  **Kč / provizorní jednotku** is an explicitly configured *provisional*
+  rate per corrected radiator unit whenever radiator allocators are present.
+  The monthly heating variable cost is the uniformly allocated sum of those
+  corrected units multiplied by that rate, plus the configured fixed heating
+  fee. This monthly estimate affects total cost, financial balance and graphs.
+  It is **not** a conversion to GJ and not an official apartment heating bill.
+- If corrected radiator units exist but the provisional rate is absent or
+  zero, the dashboard flags the financial balance as **incomplete** rather
+  than silently claiming that heating consumption costs nothing.
+- For an actual heat meter in GJ without radiator allocators, the tariff
+  field keeps its historical Kč/GJ meaning.
+- The annual building-wide estimator is independent of this monthly
+  provisional tariff. When sufficient annual building data is unavailable,
+  the official apartment heating bill cannot be computed.
 
 Local JSON and encrypted GitHub synchronization credentials are preserved.
 
