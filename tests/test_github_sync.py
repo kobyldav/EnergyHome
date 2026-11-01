@@ -68,6 +68,31 @@ class CredentialAndGitHubApiTests(unittest.TestCase):
             with self.assertRaisesRegex(SyncError, "GitHub token nelze přečíst"):
                 engine._client({"repo": "example/private", "secret": "not-base64%"})
 
+    def test_write_probe_creates_and_deletes_only_disposable_file(self):
+        from unittest.mock import patch
+        api = GitHubContents("example/private", "fake")
+        with patch.object(api, "_request", side_effect=[
+            {"content": {"sha": "probe-sha"}}, {}
+        ]) as request:
+            api.probe_write()
+        methods = [call.args[0] for call in request.call_args_list]
+        self.assertEqual(methods, ["PUT", "DELETE"])
+        put_path = request.call_args_list[0].args[1]
+        self.assertIn(".energyhome-connection-check-", put_path)
+        self.assertEqual(put_path, request.call_args_list[1].args[1])
+        self.assertNotIn("energyhome-data.json", put_path)
+        self.assertEqual(request.call_args_list[1].args[2]["sha"], "probe-sha")
+
+    def test_write_probe_reports_cleanup_error(self):
+        from unittest.mock import patch
+        from energy_app.github_sync import SyncError
+        api = GitHubContents("example/private", "fake")
+        with patch.object(api, "_request", side_effect=[
+            {"content": {"sha": "probe-sha"}}, SyncError("delete denied")
+        ]):
+            with self.assertRaisesRegex(SyncError, "testovací soubor"):
+                api.probe_write()
+
     def test_git_blob_fallback_for_content_over_one_megabyte(self):
         from unittest.mock import patch as mock_patch
         import base64
