@@ -97,7 +97,7 @@
     }
     const grouped=new Map();
     for(const item of heat) {
-      const found=entities.find(e=>e.name===item.name);
+      const found=entities.find(e=>String(e.id)===String(item.id));
       const room=found?.room||'Bez místnosti';
       const row=grouped.get(room)||{room, amount:0, count:0};
       row.amount+=Number(item.amount||0);row.count++;grouped.set(room,row);
