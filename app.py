@@ -21,6 +21,7 @@ from urllib.request import urlopen
 from energy_app.analytics import dashboard
 from energy_app.periods import financial_position, month_consumption
 from energy_app.actuals import confirmed_month
+from energy_app.debug import build_debug_report
 from energy_app.storage import JsonStore
 from energy_app.github_sync import GitHubSync, SyncError
 
@@ -36,7 +37,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 def frontend_build_id() -> str:
     digest = hashlib.sha256()
-    for rel in ("templates/index.html", "static/app.js", "static/styles.css", "static/i18n.js"):
+    for rel in ("templates/index.html", "static/app.js", "static/monthly.js", "static/styles.css", "static/i18n.js"):
         path = BASE_DIR / rel
         digest.update(rel.encode("utf-8"))
         try:
@@ -697,7 +698,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
 
         try:
-            if path.startswith("/api/sync/"):
+            if path.startswith("/api/sync/") or path == "/api/debug/report":
                 # Block cross-origin form requests against this localhost service.
                 origin = self.headers.get("Origin")
                 host = self.headers.get("Host", "")
@@ -706,6 +707,15 @@ class Handler(BaseHTTPRequestHandler):
                 if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
                     return self._json({"error": "Vyžadován application/json."}, 415)
             payload = self._read_json()
+            if path == "/api/debug/report":
+                month = str(payload.get("month") or date.today().strftime("%Y-%m"))
+                snapshot = store.load()
+                report = build_debug_report(
+                    snapshot, month, version=APP_VERSION, build_id=BUILD_ID,
+                    sync_status=github_sync.status(),
+                    data_file=DATA_FILE, backup_file=store.backup_path,
+                )
+                return self._json({"text": report})
             if path == "/api/sync/config":
                 return self._json(github_sync.configure(str(payload.get("repo", "")), str(payload.get("token", ""))))
             if path == "/api/sync/run":
