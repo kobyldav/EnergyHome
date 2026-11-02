@@ -39,7 +39,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 def frontend_build_id() -> str:
     digest = hashlib.sha256()
-    for rel in ("templates/index.html", "static/app.js", "static/monthly.js", "static/debug.js", "static/styles.css", "static/i18n.js"):
+    for rel in ("templates/index.html", "static/app.js", "static/monthly.js", "static/insights.js", "static/debug.js", "static/styles.css", "static/i18n.js"):
         path = BASE_DIR / rel
         digest.update(rel.encode("utf-8"))
         try:
@@ -610,6 +610,7 @@ class Handler(BaseHTTPRequestHandler):
             "/static/i18n.js": static_dir / "i18n.js",
             "/static/app.js": static_dir / "app.js",
             "/static/monthly.js": static_dir / "monthly.js",
+            "/static/insights.js": static_dir / "insights.js",
             "/static/debug.js": static_dir / "debug.js",
         }
         for asset_url, asset_path in asset_paths.items():
