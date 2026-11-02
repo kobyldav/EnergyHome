@@ -270,7 +270,7 @@ window.EnergyInsights = (() => {
         connected=true;
         output+='<circle cx="'+xx+'" cy="'+yy+'" r="'+(month.month===historyMonth?4.4:3.1)+
           '" fill="'+item.color+'"><title>'+svg(month.month+' · '+item.label+' · '+money(val)+
-          (month.partial?' · zatím neúplné období':'')+(month.month===historyMonth?' · vybraný měsíc':'')+
+          (month.partial?' · zatím neúplné období':'')+(month.month===historyMonth?' · vybraný měsíc':''))+
           '</title></circle>';
       }
       if(d)output+='<path d="'+d+'" fill="none" stroke="'+item.color+'" stroke-width="'+
