@@ -354,7 +354,12 @@ button,input,select{font:inherit}
 .heat-interval-heading{font-size:14px;margin:20px 0 12px}
 @media(max-width:650px){.debug-modal{padding:8px}.debug-dialog{height:calc(100vh - 16px);padding:14px}.debug-dialog-actions{flex-wrap:wrap}.debug-dialog-actions .btn{width:100%}}
 
-/* Explanation of provisional heat expenses immediately below monthly finance. */
-.heat-cost-details{display:grid;gap:5px;padding:12px 0 2px;margin-top:13px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);line-height:1.45}
-.heat-cost-details strong{color:var(--text);font-weight:750}
-.heat-cost-caption{font-weight:750;text-transform:uppercase;letter-spacing:.07em;font-size:11px;color:var(--accent,#176f64)}
+
+/* Historical insights: compact controls and chart semantics in the original flat UI. */
+.insights-card-subtitle{display:block;font-size:11px;color:var(--muted);margin-top:6px;font-weight:500}
+.insights-chart-note{color:var(--muted);font-size:11px;line-height:1.55;padding:3px 15px 15px;margin:0;min-height:38px}
+.chart-card .card-head{align-items:center;gap:10px}
+.insight-select-label{display:flex;align-items:center;gap:6px;flex:none;color:var(--muted);font-size:11px;font-weight:650}
+.insight-select-label select{min-width:115px;max-width:170px;border:1px solid var(--line-strong);border-radius:3px;background:#fff;color:var(--text);font:inherit;padding:7px 8px}
+.chart-card svg{min-width:0}
+@media(max-width:800px){.chart-card .card-head{flex-wrap:wrap}.insight-select-label{width:100%;justify-content:flex-end}}
