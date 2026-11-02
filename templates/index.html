@@ -74,7 +74,6 @@
           <div class="thermometer finance"><div id="thermoFill" class="thermo-fill"></div><div class="thermo-mid"></div></div>
           <div class="thermo-labels"><span>Nedoplatek</span><span>0</span><span>Přeplatek</span></div>
           <div class="mini-grid"><div><small id="paidTotalLabel">Předepsané zálohy</small><b id="paidTotal">—</b></div><div><small>Náklady dle odečtů a ceníku</small><b id="actualCost">—</b></div></div>
-          <div id="heatCostDetails" class="heat-cost-details hidden" aria-live="polite"></div>
         </article>
         <article class="card">
           <div class="card-head"><div><p class="eyebrow">DETEKTIV</p><h2>Upozornění</h2></div></div>
@@ -89,15 +88,23 @@
 
       <div class="grid two">
         <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">NÁKLADY</p><h2>Fixní vs. proměnlivé</h2></div></div><svg id="costChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Fixní a proměnlivé náklady"></svg></article>
-        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">ELEKTŘINA</p><h2>Průměrná denní spotřeba elektřiny</h2></div></div><svg id="usageChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Spotřebiče a ostatní používání elektřiny"></svg></article>
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">ELEKTŘINA</p><h2>Průměrná denní spotřeba elektřiny</h2><small class="insights-card-subtitle">Elektroměr × trvalé a cyklické spotřebiče</small></div></div><svg id="usageChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Denní elektřina, lednička, pračka a zbývající spotřeba"></svg><p id="usageChartNote" class="insights-chart-note"></p></article>
       </div>
       <div class="grid two">
-        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">SPOTŘEBIČE</p><h2>Spotřeba elektřiny podle měřidel</h2></div></div><svg id="applianceChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 300" role="img" aria-label="Rozpad spotřeby podle spotřebičů"></svg></article>
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">SPOTŘEBIČE</p><h2>Rozdělení elektřiny v čase</h2><small class="insights-card-subtitle">Měřená spotřeba a odhady spotřebičů</small></div>
+          <label class="insight-select-label" for="insightRange">Historie
+            <select id="insightRange" aria-label="Délka historie grafů">
+              <option value="6">6 měsíců</option><option value="12" selected>12 měsíců</option>
+            </select>
+          </label></div><svg id="applianceChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 300" role="img" aria-label="Historie elektřiny a modelových spotřebičů"></svg><p id="applianceChartNote" class="insights-chart-note"></p></article>
         <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">CASH FLOW</p><h2>Náklady vs. předepsané zálohy</h2></div></div><svg id="cashflowChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 300" role="img" aria-label="Náklady a zálohy"></svg></article>
       </div>
       <div class="grid two">
         <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">BILANCE</p><h2>Rozdíl záloh a nákladů za měsíc</h2></div></div><svg id="balanceTrendChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Vývoj přeplatku a nedoplatku"></svg></article>
-        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">TOPENÍ</p><h2>Rozpočítaná spotřeba tepla za měsíc</h2></div></div><svg id="heatingTrendChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Vývoj spotřeby tepla"></svg></article>
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">TOPENÍ</p><h2>Vývoj spotřeby tepla</h2><small class="insights-card-subtitle">Měsíční historie radiátorů</small></div>
+          <label class="insight-select-label" for="heatRoomFilter">Místnost
+            <select id="heatRoomFilter" aria-label="Zobrazit konkrétní místnost"><option value="all">Všechny místnosti</option></select>
+          </label></div><svg id="heatingTrendChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Spotřeba tepla za poslední měsíce podle místností"></svg><p id="heatingTrendNote" class="insights-chart-note"></p></article>
       </div>
       <article class="card svg-analytics-card">
         <div class="card-head svg-analytics-head">
@@ -414,6 +421,7 @@
 <div id="toast" class="toast"></div>
 <script src="/static/i18n.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/insights.js"></script>
 <script src="/static/monthly.js"></script>
 <script src="/static/debug.js"></script>
 </body>
