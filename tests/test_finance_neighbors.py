@@ -1,6 +1,7 @@
 import unittest
 from datetime import date
 from copy import deepcopy
+from unittest.mock import patch
 
 from energy_app.actuals import confirmed_month
 from energy_app.insights import history_insights
@@ -72,6 +73,35 @@ class FinanceNeighborsAndOffRadiatorsTests(unittest.TestCase):
         self.assertEqual(coverage["off_a"]["days"],31)
         self.assertTrue(coverage["off_b"]["assumed_zero"])
         self.assertFalse(october["cost_incomplete"])
+
+    def test_off_status_is_persisted_and_rejects_further_meter_readings(self):
+        import app
+        data=self.sample()
+        with patch.object(app.store, "load", return_value=data), patch.object(app.store, "save") as save:
+            result=app.save_heat_allocator({
+                "id":"off_a","name":"U dveří","room":"Chodba",
+                "base_date":"2026-10-09","base_value":0,
+                "coefficient":1,"always_off":True,
+            })
+            self.assertEqual(result["id"],"off_a")
+            self.assertTrue(next(x for x in data["heat_allocators"] if x["id"]=="off_a")["always_off"])
+            save.assert_called_once()
+            with self.assertRaisesRegex(ValueError,"trvale vypnutý"):
+                app.save_heat_allocator_reading({
+                    "allocator_id":"off_a","date":"2026-11-02","value":2
+                })
+
+    def test_marking_radiator_off_cannot_hide_previous_nonzero_reads(self):
+        import app
+        data=self.sample()
+        with patch.object(app.store, "load", return_value=data), patch.object(app.store, "save") as save:
+            with self.assertRaisesRegex(ValueError,"nenulové odečty"):
+                app.save_heat_allocator({
+                    "id":"hot","name":"U okna","room":"Ložnice",
+                    "base_date":"2026-09-01","base_value":0,
+                    "coefficient":1,"always_off":True,
+                })
+            save.assert_not_called()
 
     def test_no_data_and_all_off_is_user_declared_zero_not_a_meter_reading(self):
         data=self.sample()
