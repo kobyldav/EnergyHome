@@ -100,10 +100,18 @@
               <option value="6">6 měsíců</option><option value="12" selected>12 měsíců</option>
             </select>
           </label></div><svg id="applianceChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 300" role="img" aria-label="Historie elektřiny a modelových spotřebičů"></svg><p id="applianceChartNote" class="insights-chart-note"></p></article>
-        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">CASH FLOW</p><h2>Náklady vs. předepsané zálohy</h2></div></div><svg id="cashflowChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 300" role="img" aria-label="Náklady a zálohy"></svg></article>
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">CASH FLOW</p><h2>Náklady vs. předepsané zálohy</h2><small class="insights-card-subtitle">Přehled okolních měsíců</small></div>
+          <label class="insight-select-label" for="financeChartMode">Zobrazit
+            <select id="financeChartMode" aria-label="Zobrazení nákladů a záloh">
+              <option value="energy">Jednotlivé energie</option>
+              <option value="total">Celkové náklady a zálohy</option>
+            </select>
+          </label></div>
+          <svg id="cashflowChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 300" role="img" aria-label="Vývoj nákladů a záloh podle měsíců"></svg>
+          <p id="cashflowChartNote" class="insights-chart-note"></p></article>
       </div>
       <div class="grid two">
-        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">BILANCE</p><h2>Rozdíl záloh a nákladů za měsíc</h2></div></div><svg id="balanceTrendChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Vývoj přeplatku a nedoplatku"></svg></article>
+        <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">BILANCE</p><h2>Rozdíl záloh a nákladů za měsíc</h2><small class="insights-card-subtitle">Přeplatek či nedoplatek v okolních měsících</small></div></div><svg id="balanceTrendChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Vývoj přeplatku a nedoplatku podle měsíců"></svg><p id="balanceTrendNote" class="insights-chart-note"></p></article>
         <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">TOPENÍ</p><h2>Vývoj spotřeby tepla</h2><small class="insights-card-subtitle">Měsíční historie radiátorů</small></div>
           <label class="insight-select-label" for="heatRoomFilter">Místnost
             <select id="heatRoomFilter" aria-label="Zobrazit konkrétní místnost"><option value="all">Všechny místnosti</option></select>
@@ -228,6 +236,7 @@
             <label>Počáteční stav<input type="number" step="0.001" min="0" name="base_value" value="0" required></label>
             <label>Počáteční stav platí k<input type="date" name="base_date" required></label>
             <label class="full">Přepočtový koeficient <span class="optional">(pokud ho znáte)</span><input type="number" step="0.0001" min="0.0001" name="coefficient" value="1"></label>
+            <label class="checkbox-label full"><input type="checkbox" name="always_off" value="true"><span>Trvale vypnutý radiátor – 0 ve všech sledovaných měsících (bez dalších odečtů)</span></label>
             <button class="btn primary full" type="submit">Uložit topný měřič</button>
           </form>
           <p class="help">Jde o odečtové zařízení připevněné na radiátoru. Koeficient ponechte 1, pokud neznáte oficiální přepočet pro konkrétní radiátor.</p>

@@ -17,6 +17,8 @@
   const noProjection = '';
   const statusText = (v, utility) => {
     const status = v.status?.[utility];
+    if (utility==='heat' && v.coverage?.heat?.some(entry=>entry.assumed_zero))
+      return 'Spotřeba radiátorů · vypnuté jsou nastavené na 0';
     if (status === 'complete') return 'Rozpočítáno z odečtů za celý měsíc';
     if (status === 'to_date') return 'Rozpočítáno do posledního odečtu';
     if (status === 'partial') return 'Rozpočítáno podle odečtů · část měsíce chybí';
@@ -102,8 +104,7 @@
     drawCostChart([m]);
     // Appliance share is only a configured model, never an actual device reading.
     window.EnergyInsights?.renderAll(v,history);
-    drawCashflowChart([m]);
-    drawBalanceTrendChart([m]);
+    // Historical finance lines are rendered by EnergyInsights from neighbor months.
 
     drawExpenseTreeChart([m],{start:v.month,end:v.month});
     drawWaterfall(b);
@@ -135,7 +136,9 @@
     const roomRows=[...grouped.values()].sort((a,b)=>a.room.localeCompare(b.room,'cs')).map(r=>
       '<tr><td><b>'+escapeHtml(r.room)+'</b></td><td>'+r.devices+'</td><td><b>'+nf.format(r.value)+' jedn.</b></td></tr>').join('');
     const rows=current.sort((a,b)=>a.room.localeCompare(b.room,'cs')).map(d=>
-      '<tr><td>'+escapeHtml(d.room)+'</td><td>'+escapeHtml(d.name)+'</td><td><b>'+nf.format(d.amount)+' jedn.</b></td></tr>').join('');
+      '<tr><td>'+escapeHtml(d.room)+'</td><td>'+escapeHtml(d.name)+
+      (d.assumed_zero?' · vypnutý':'')+'</td><td><b>'+nf.format(d.amount)+' jedn.</b>'+
+      (d.assumed_zero?' (nastaveno)':'')+'</td></tr>').join('');
     box.innerHTML='<div class="table-wrap dashboard-table"><table><thead><tr><th>Místnost</th><th>Radiátory</th><th>Spotřeba za vybraný měsíc</th></tr></thead><tbody>'+
       roomRows+'</tbody></table></div>'+
       '<h3 class="heat-interval-heading">Jednotlivé radiátory</h3>'+
@@ -246,6 +249,7 @@
     }
     monthOverview(displayed);
   };
+  $('#financeChartMode')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderFinancial(history);});
   $('#insightRange')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderHistory(history);});
   $('#heatRoomFilter')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderHistory(history);});
   picker.addEventListener('change',()=>{

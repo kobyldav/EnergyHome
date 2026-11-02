@@ -161,7 +161,7 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         "unit": "jedn." if heat_uses_allocators else "GJ",
         "variable_cost": variable_costs["heat"],
         "provisional": bool(heat_uses_allocators),
-        "incomplete": bool(heat_uses_allocators and heat_rate <= 0 and allocated["has_data"]["heat"]),
+        "incomplete": bool(heat_uses_allocators and heat_rate <= 0 and values["heat"] > 0),
     }
     fixed_costs = {
         u: fraction * float(tariff.get(UTILITIES[u]["fixed"], 0) or 0)

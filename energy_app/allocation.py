@@ -117,11 +117,29 @@ def allocate_daily(data: dict, month_start: date, month_end: date, today: date):
             continue
         calculate(utility, meter, by_meter[str(meter.get("id"))])
     for allocator in heat_allocators:
+        entity_id = str(allocator.get("id") or "")
+        if allocator.get("always_off"):
+            # Explicit assumption from the user, not a fabricated actual
+            # measurement: zero consumption since the saved base date.
+            meters_per_utility["heat"].append(entity_id)
+            device_info[entity_id] = {
+                "name": str(allocator.get("name") or ""),
+                "room": str(allocator.get("room") or "Bez místnosti"),
+                "utility": "heat", "assumed_zero": True,
+            }
+            # User explicitly asserts the radiator has always been off;
+            # otherwise an October 9 baseline would falsely make Oct 1-9
+            # unknown even though the radiator is never used.
+            day = month_start
+            while day <= end:
+                accumulate(day, "heat", 0.0, entity_id, False)
+                day += timedelta(days=1)
+            continue
         try:
             coeff = float(allocator.get("coefficient", 1) or 1)
         except (TypeError, ValueError):
             coeff = 1.
-        calculate("heat", allocator, by_heat[str(allocator.get("id"))], coeff, allow_reset=True)
+        calculate("heat", allocator, by_heat[entity_id], coeff, allow_reset=True)
 
     days = []
     day = month_start
@@ -150,7 +168,8 @@ def allocate_daily(data: dict, month_start: date, month_end: date, today: date):
         }
         coverage[u] = [{"id": entity, "days":len(sets.get(entity,set())),
                          "first": min(sets[entity]) if sets.get(entity) else None,
-                         "last": max(sets[entity]) if sets.get(entity) else None}
+                         "last": max(sets[entity]) if sets.get(entity) else None,
+                         "assumed_zero": bool(device_info.get(entity, {}).get("assumed_zero"))}
                        for entity in names]
         if not data_days:
             status[u] = "missing"

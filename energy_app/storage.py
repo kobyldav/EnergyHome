@@ -154,6 +154,7 @@ def migrate(data: dict) -> dict:
         h.setdefault("coefficient", 1.0)
         h.setdefault("base_value", 0.0)
         h.setdefault("base_date", "")
+        h.setdefault("always_off", False)
     for r in data.get("heat_allocator_readings", []):
         r.setdefault("id", _id("heatreading"))
         r.setdefault("reset", False)

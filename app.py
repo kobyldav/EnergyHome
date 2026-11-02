@@ -317,8 +317,17 @@ def save_heat_allocator(p: dict) -> dict:
     if coefficient <= 0:
         raise ValueError("Přepočtový koeficient musí být větší než 0.")
     base_date = valid_date(p.get("base_date"))
+    always_off = boolean(p.get("always_off"))
+    if always_off:
+        # Do not hide previously recorded, positive consumption when toggling
+        # a radiator off. The all-history zero assertion must be consistent.
+        if any(float(r.get("value") or 0) != base_value or boolean(r.get("reset"))
+               for r in data.get("heat_allocator_readings", [])
+               if r.get("allocator_id") == allocator_id):
+            raise ValueError("Radiátor má nenulové odečty. Nelze jej označit jako trvale vypnutý; nejprve ověřte jeho historii.")
     row = {
         "id": allocator_id,
+        "always_off": always_off,
         "name": str(p.get("name", "Radiátor")).strip() or "Radiátor",
         "room": str(p.get("room", "")).strip(),
         "serial_number": str(p.get("serial_number", "")).strip(),
@@ -340,6 +349,8 @@ def save_heat_allocator_reading(p: dict) -> dict:
     allocator = next((h for h in data["heat_allocators"] if h.get("id") == allocator_id), None)
     if not allocator:
         raise ValueError("Vyberte existující topný měřič.")
+    if allocator.get("always_off"):
+        raise ValueError("Tento radiátor je nastaven jako trvale vypnutý. Pro zadávání nových odečtů změňte nastavení radiátoru.")
     reading_date = valid_date(p.get("date"))
     value = number(p.get("value"))
     reset = boolean(p.get("reset"))

@@ -37,6 +37,7 @@ $("#dashboardMonthPicker").value = "2026-10";
 $("#insightRange").value = "12";
 $("#heatRoomFilter").value = "all";
 $("#applianceFocus").value = "all";
+$("#financeChartMode").value = "energy";
 const document = {
   visibilityState: "hidden", querySelector: $,
   querySelectorAll(selector) {
@@ -75,6 +76,14 @@ async function fetch(url) {
     });
     body={
       selected_month:month,
+      finance_months:Array.from({length:5},(_,i)=>{
+        const idx=Number(month.slice(0,4))*12+Number(month.slice(5))-1+(i-2);
+        const m=String(Math.floor(idx/12)).padStart(4,'0')+'-'+String(idx%12+1).padStart(2,'0');
+        return {month:m,available:i!==0&&i!==4,
+          total_cost:300+i*10,advance:430+i*10,balance:130,
+          utility_costs:{electricity:150+i*10,cold_water:20,hot_water:30,gas:40,heat:60},
+          partial:i===3};
+      }),
       months:indexes.map((m,i)=>({
         month:m,electricity_kwh:i>=10?i*10:null,
         heat_units:i>=10?i*2:null,
@@ -149,6 +158,19 @@ async function flush() {
   assert($("#usageChartNote").textContent.includes("Pračka"),"Daily model should name the washer");
   assert($("#applianceChart").innerHTML.includes("path"),"Twelve-month appliance breakdown must be drawn");
   assert($("#applianceChartNote").textContent.includes("12 měsíců"),"History chart labels window");
+  assert($("#balanceTrendChart").innerHTML.includes("09/26"),"Balance must include September neighbor");
+  assert($("#balanceTrendChart").innerHTML.includes("11/26"),"Balance must include November neighbor");
+  assert($("#cashflowChart").innerHTML.includes("Elektřina"),"Finance chart has energy legend");
+  assert($("#cashflowChart").innerHTML.includes("Předepsané zálohy"),"Finance chart includes advances");
+  assert($("#cashflowChart").innerHTML.includes("svg-grid-line"),"Finance chart draws multiple months");
+  const financeSwitch=listeners.find(x=>x.name==="#financeChartMode"&&x.type==="change");
+  assert(financeSwitch,"Finance selector must be interactive");
+  $("#financeChartMode").value="total";
+  financeSwitch.callback();
+  assert($("#cashflowChart").innerHTML.includes("Náklady celkem"),"Total mode must display costs");
+  assert(!$("#cashflowChart").innerHTML.includes("Studená voda"),"Total mode hides per-energy traces");
+  $("#financeChartMode").value="energy";
+  financeSwitch.callback();
   assert($("#heatingTrendNote").textContent.includes("12 měsíců"),
     "Heat history panel must show timeframe");
   assert($("#mediaChart-electricity").innerHTML.includes(" L "),"Cumulative interpolated line must connect daily points");

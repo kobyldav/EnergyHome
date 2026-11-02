@@ -151,6 +151,31 @@ monthly overview groups the attributed units by room/radiator.
 
 Local JSON and encrypted GitHub synchronization credentials are preserved.
 
+### Neighboring monthly finance charts and zero-use radiators
+
+The dashboard's **Difference between scheduled advances and calculated costs**
+and **Costs vs scheduled advances** charts now use a five-month window centered
+on the chosen calendar month (two months before / selected / two months after).
+Months beyond the current date and months before household records are displayed
+as gaps, not as zeros or speculative future costs. September, October and
+November appear together when October is selected and the records exist.
+Balances are **per-month differences**, not an unexplained cumulative total.
+The selected month is marked by a subtle vertical guide.
+
+The finance line chart includes two display modes: all five individual
+utilities, total calculated costs and scheduled advances; or only total costs
+against advances. Each line uses the same confirmed reading allocation, tariffs,
+fixed fees and advance rules as the dashboard's financial card. Current-month
+numbers are partial. Advances are schedules, not verified bank transfers.
+
+For radiator meters that have **never** been used, edit the radiator and mark
+**Trvale vypnutý radiátor**. This is an explicit user-declared **assumption
+of zero use throughout history**, not a measurement; it keeps the radiator in
+the household but removes spurious missing-reading warnings. Actual positive
+readings cannot be overwritten by this setting. To record use later, first
+uncheck the flag and resume dated readings. Changing the status changes the
+historical calculation; keep the flag only for genuinely always-off radiators.
+
 ### Appliance and heating history (dashboard)
 
 - **Daily electricity** uses one continuous line for actual between-reading
