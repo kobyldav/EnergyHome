@@ -227,16 +227,107 @@ window.EnergyInsights = (() => {
       unique.map(room=>'<option value="'+escapeHtml(room)+'">'+escapeHtml(room)+'</option>').join('');
     select.value=unique.includes(previous)?previous:'all';
   }
+  const financeSeries = [
+    {key:'electricity',label:'Elektřina',color:'#277f72'},
+    {key:'cold_water',label:'Studená voda',color:'#4d8fa8'},
+    {key:'hot_water',label:'Teplá voda',color:'#b76b59'},
+    {key:'gas',label:'Plyn',color:'#aa874a'},
+    {key:'heat',label:'Teplo',color:'#806b5a'}
+  ];
+  function financeView(history){
+    return history?.finance_months||[];
+  }
+  function financeLabels(list,g,H){
+    const x=i=>list.length===1?g.left+g.plotW/2:g.left+g.plotW*i/(list.length-1);
+    return list.map((v,i)=>{
+      const selected=v.month===historyMonth, y=H-13;
+      return '<text class="svg-axis-text" x="'+x(i)+'" y="'+y+'" text-anchor="middle"'+
+        (selected?' style="font-weight:800;fill:#14685e"':'')+'>'+svg(labelMonth(v.month))+'</text>';
+    }).join('');
+  }
+  let historyMonth='';
+  function plotFinanceLines(list,series,W,H,minimum=0){
+    const validValues=list.flatMap(r=>r.available?series.map(it=>Number(it.value(r)||0)):[]);
+    const max=Math.max(minimum+1,...validValues,0);
+    const min=Math.min(minimum,...validValues,0);
+    const pad=Math.max(40,(max-min)*0.13);
+    const g=svgYAxis(W,H,Math.min(0,min-pad*(min<0?1:0)),max+pad,82,18,80,H===300?42:40,
+      v=>Math.round(v).toLocaleString('cs-CZ')+' Kč');
+    const x=i=>list.length===1?g.left+g.plotW/2:g.left+g.plotW*i/(list.length-1);
+    const selected=list.findIndex(r=>r.month===historyMonth);
+    let backdrop='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+g.grid;
+    if(selected>=0)backdrop+='<line x1="'+x(selected)+'" x2="'+x(selected)+
+      '" y1="'+g.top+'" y2="'+g.base+'" stroke="#b1ccc5" stroke-width="2" stroke-dasharray="4 5"></line>';
+    let output='';
+    for(const item of series){
+      let d='',connected=false;
+      for(let i=0;i<list.length;i++){
+        const month=list[i];
+        const val=month.available?item.value(month):null;
+        if(val==null || !Number.isFinite(Number(val))){connected=false;continue;}
+        const xx=x(i),yy=g.y(Number(val));
+        d+=(connected?' L ':' M ')+xx.toFixed(2)+' '+yy.toFixed(2);
+        connected=true;
+        output+='<circle cx="'+xx+'" cy="'+yy+'" r="'+(month.month===historyMonth?4.4:3.1)+
+          '" fill="'+item.color+'"><title>'+svg(month.month+' · '+item.label+' · '+money(val)+
+          (month.partial?' · zatím neúplné období':'')+(month.month===historyMonth?' · vybraný měsíc':'')+
+          '</title></circle>';
+      }
+      if(d)output+='<path d="'+d+'" fill="none" stroke="'+item.color+'" stroke-width="'+
+        (item.strong?3.2:2.2)+'" stroke-linejoin="round" stroke-linecap="round"'+
+        (item.dash?' stroke-dasharray="6 4"':'')+'></path>';
+    }
+    if(min<0)backdrop+='<line x1="'+g.left+'" x2="'+(W-g.right)+
+      '" y1="'+g.y(0)+'" y2="'+g.y(0)+'" class="svg-zero-line"></line>';
+    return {markup:backdrop+output+financeLabels(list,g,H),x};
+  }
+  function renderFinancial(history){
+    const list=financeView(history);
+    historyMonth=history?.selected_month||'';
+    const cash=document.querySelector('#cashflowChart');
+    const balance=document.querySelector('#balanceTrendChart');
+    if(!cash||!balance)return;
+    if(!list.some(x=>x.available)){
+      svgChartEmpty('#cashflowChart','V okolních měsících nejsou doložené finanční údaje.',760,300);
+      svgChartEmpty('#balanceTrendChart','V okolních měsících nejsou doložené finanční údaje.',760,280);
+      return;
+    }
+    const total={label:'Náklady celkem',color:'#164a42',strong:true,value:r=>r.total_cost};
+    const advances={label:'Předepsané zálohy',color:'#7c8c96',dash:true,strong:true,value:r=>r.advance};
+    const mode=document.querySelector('#financeChartMode')?.value||'energy';
+    const individual=financeSeries.map(u=>({label:u.label,color:u.color,
+      value:r=>r.utility_costs?.[u.key]}));
+    const plotted=mode==='energy'?[...individual,total,advances]:[total,advances];
+    const legendRows=mode==='energy'?[individual.slice(0,4),[individual[4],total,advances]]:[[total,advances]];
+    const legend=legendRows.map((row,idx)=>row.map((it,i)=>{
+      const x=82+i*(mode==='energy'?167:225),y=22+idx*23;
+      return '<line x1="'+x+'" y1="'+y+'" x2="'+(x+19)+'" y2="'+y+
+        '" stroke="'+it.color+'" stroke-width="'+(it.strong?3:2)+'"'+
+        (it.dash?' stroke-dasharray="5 3"':'')+'></line>'+
+        '<text x="'+(x+25)+'" y="'+(y+4)+'" class="svg-axis-text">'+svg(it.label)+'</text>';
+    }).join('')).join('');
+    cash.innerHTML=plotFinanceLines(list,plotted,760,300).markup+legend;
+    const balanceSeries=[{
+      label:'Rozdíl záloh a nákladů',color:'#277f72',strong:true,value:r=>r.balance,
+    }];
+    balance.innerHTML=plotFinanceLines(list,balanceSeries,760,280,
+      Math.min(0,...list.filter(x=>x.available).map(x=>Number(x.balance||0)))).markup;
+    const note=document.querySelector('#cashflowChartNote');
+    if(note)note.textContent='Zálohy jsou předepsané, nikoli potvrzené bankovní platby. Náklady zahrnují fixní poplatky a spotřebu z odečtů. Tečkovaný svislý pruh označuje vybraný měsíc; budoucnost se nepředpovídá.';
+    const balanceNote=document.querySelector('#balanceTrendNote');
+    if(balanceNote)balanceNote.textContent='Každý bod = rozdíl záloh a nákladů za příslušný měsíc (ne kumulativní součet). U probíhajícího měsíce jde pouze o dosud známé hodnoty. Chybějící měsíce nejsou vykresleny jako nula.';
+  }
   function renderAll(monthData,history){
     renderDaily(monthData,history);
     rooms(history);
     appliances(history);
     renderElectricHistory(history);
     renderHeatHistory(history);
+    renderFinancial(history);
   }
   function renderHistory(history){
     renderElectricHistory(history);
     renderHeatHistory(history);
   }
-  return {renderAll,renderHistory};
+  return {renderAll,renderHistory,renderFinancial};
 })();
