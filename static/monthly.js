@@ -2,6 +2,7 @@
    Included after app.js so legacy pages/forms stay compatible. */
 (() => {
   let displayed = null;
+  let history = null;
   let stateIdentity = null;
   let pending = null;
   let serial = 0;
@@ -67,24 +68,6 @@
       (heatPrice?.mode==='allocator_unit_estimate' ? ' · orientačně' : '');
 
     drawFinancialPosition(v);
-    const heatInfo=$('#heatCostDetails');
-    if(heatInfo){
-      if(heatPrice?.mode==='allocator_unit_estimate' && heatPrice.quantity != null){
-        heatInfo.classList.remove('hidden');
-        heatInfo.innerHTML='<span class="heat-cost-caption">Teplo · orientační náklady</span>'+
-          '<span>'+nf.format(heatPrice.quantity)+' jedn. × '+money(heatPrice.rate)+
-          ' = <strong>'+money(heatPrice.variable_cost)+'</strong> spotřební část</span>'+
-          '<span>+ '+money(heatPrice.fixed_cost)+' fixně = <strong>'+money(heatPrice.total_cost)+'</strong> za teplo</span>';
-      }else if(v.cost_incomplete){
-        heatInfo.classList.remove('hidden');
-        heatInfo.innerHTML='<span class="heat-cost-caption">Teplo · chybí cena dílku</span>'+
-          '<span>Spotřeba '+nf.format(heatPrice?.quantity||0)+
-          ' jedn. je evidovaná, ale není stanovená orientační jednotková cena v Ceníku.</span>';
-      }else{
-        heatInfo.innerHTML='';
-        heatInfo.classList.add('hidden');
-      }
-    }
     if(v.cost_incomplete){
       $('#currentBalance').textContent='Neúplné';
       $('#actualCost').textContent=money(v.total_cost)+' + teplo';
@@ -94,8 +77,22 @@
 
     if (v.cost_incomplete)
       notes.push({severity:'warning',text:'Spotřeba tepla je započtená v dílcích, ale její cena není zadaná. Finanční výsledek je neúplný. Doplň sazbu za jednotku v Ceníku.'});
-        if (utilities.some(u=>v.status[u]==='partial'))
-      notes.push({severity:'warning',text:'Některé odečty pokrývají jen část zvoleného měsíce. Součet není jeho celková spotřeba.'});
+    const incomplete = utilities.filter(u=>v.status?.[u]==='partial');
+    if(incomplete.length){
+      const missing = incomplete.map(u=>{
+        const meterDefs = u==='heat' && (STATE.data.heat_allocators||[]).length
+          ? STATE.data.heat_allocators
+          : (STATE.data.meters||[]).filter(m=>m.utility===u);
+        const entries = v.coverage?.[u]||[];
+        const expected = v.as_of && v.as_of>=v.start ? Number(v.as_of.slice(-2)) : 0;
+        const gaps = meterDefs.filter(m=>(entries.find(e=>e.id===m.id)?.days||0)<expected)
+          .map(m=>m.room?m.room+' · '+m.name:m.name);
+        const extra = gaps.length ? ' (chybí úplný interval: '+gaps.slice(0,3).join(', ')+(gaps.length>3?' a další':'')+')':'';
+        return utilityLabel[u]+extra;
+      });
+      notes.push({severity:'info',text:'Neúplná data pro '+incomplete.map(u=>utilityLabel[u]).join(', ')+
+        ' — '+missing.join('; ')+'. Některé dny nejsou podloženy dvěma odečty+'. Zobrazená spotřeba zahrnuje jen pokryté dny, ne odhad za zbytek měsíce.'});
+    }
 
 
     if (STATE.dashboard?.contract_review?.due)
@@ -104,59 +101,15 @@
 
     drawCostChart([m]);
     // Appliance share is only a configured model, never an actual device reading.
-    drawElectricIntervals(v);
-    drawElectricMeters(v);
+    window.EnergyInsights?.renderAll(v,history);
     drawCashflowChart([m]);
     drawBalanceTrendChart([m]);
-    drawHeatingTrendChart([m]);
+
     drawExpenseTreeChart([m],{start:v.month,end:v.month});
     drawWaterfall(b);
     renderCostSankey([m]);
     renderMonthHeat(v);
     for (const u of utilities) drawActualReadingChart(u,v);
-  }
-
-  // The bars show actual between-reading deltas, not estimated appliance use.
-  function drawElectricIntervals(v){
-    const svg=$('#usageChart'),W=760,H=280,left=82,right=24,top=38,bottom=49;
-    const grouped=new Map();
-    for(const d of (v.days||[])){
-      if(!d.has_allocation?.electricity)continue;
-      grouped.set(d.date,Number(d.measured?.electricity||0));
-    }
-    const rows=[...grouped].sort((a,b)=>a[0].localeCompare(b[0]));
-    if(!rows.length){svgChartEmpty('#usageChart','Nejsou potvrzené přírůstky elektřiny za měsíc.',W,H);return;}
-    const max=Math.max(0.001,...rows.map(r=>r[1]));
-    const g=svgYAxis(W,H,0,max*1.08,left,right,top,bottom,val=>nf.format(val)+' kWh');
-    const slot=g.plotW/rows.length,bw=Math.min(48,slot*.55);
-    const bars=rows.map(([day,value],i)=>{
-      const cx=left+(i+.5)*slot,hh=value/(max*1.08)*g.plotH;
-      const label=rows.length<=10||i%Math.max(1,Math.ceil(rows.length/10))===0 ? day.slice(-2)+'.' : '';
-      return '<rect class="svg-bar-primary" x="'+(cx-bw/2)+'" y="'+(g.base-hh)+'" width="'+bw+'" height="'+hh+'"><title>'+svgSafe(day)+' · '+svgSafe(nf.format(value))+' kWh</title></rect>'+
-        (label?'<text class="svg-axis-text" x="'+cx+'" y="'+(H-15)+'" text-anchor="middle">'+label+'</text>':'');
-    }).join('');
-    svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+g.grid+bars+
-      '<text class="svg-unit-label" x="'+left+'" y="18">Z ROZDÍLŮ ODEČTŮ</text>';
-  }
-
-  function drawElectricMeters(v){
-    const svg=$('#applianceChart'),W=760,H=300,left=205,right=95,top=31;
-    const grouped=new Map();
-    for(const e of (v.monthly_devices||[])){
-      if(e.utility!=='electricity'||!e.has_data)continue;
-      grouped.set(e.id,{name:e.name,amount:Number(e.amount||0)});
-    }
-    const rows=[...grouped.values()].sort((a,b)=>b.amount-a.amount);
-    if(!rows.length){svgChartEmpty('#applianceChart','Bez potvrzených odečtů elektroměrů.',W,H);return;}
-    const max=Math.max(0.001,...rows.map(r=>r.amount));
-    const rh=Math.min(35,(H-top-18)/rows.length),width=W-left-right;
-    const lines=rows.slice(0,8).map((r,i)=>{
-      const y=top+i*rh,barWidth=width*r.amount/max;
-      return '<text class="svg-category-label" x="'+(left-12)+'" y="'+(y+17)+'" text-anchor="end">'+svgSafe(r.name)+'</text>'+
-        '<rect x="'+left+'" y="'+(y+4)+'" width="'+barWidth+'" height="21" class="svg-bar-primary"><title>'+svgSafe(r.name)+' · '+nf.format(r.amount)+' kWh</title></rect>'+
-        '<text class="svg-value-label" x="'+Math.min(W-85,left+barWidth+8)+'" y="'+(y+19)+'">'+nf.format(r.amount)+' kWh</text>';
-    }).join('');
-    svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+lines;
   }
 
   function renderMonthHeat(v){
@@ -249,10 +202,17 @@
     if(pending===key)return;
     pending=key;
     try {
-      const next=await api('/api/month-actual?month='+encodeURIComponent(month));
+      const [actualResult,historyResult]=await Promise.allSettled([
+        api('/api/month-actual?month='+encodeURIComponent(month)),
+        api('/api/insights?month='+encodeURIComponent(month))
+      ]);
+      if(actualResult.status==='rejected')throw actualResult.reason;
       if(state===STATE && picker.value===month && pending===key) {
-        displayed=next;
+        displayed=actualResult.value;
+        history=historyResult.status==='fulfilled'?historyResult.value:null;
         renderDashboard();
+        if(historyResult.status==='rejected')
+          toast('Historické grafy nejsou dostupné: '+historyResult.reason.message);
       }
     } catch(err) {
       if(pending===key) {
@@ -267,13 +227,12 @@
   renderDashboard = function(){
     if(!STATE)return;
     if(stateIdentity!==STATE){
-      stateIdentity=STATE;displayed=null;serial++;
+      stateIdentity=STATE;displayed=null;history=null;serial++;
     }
     if(!picker.value) picker.value=STATE.dashboard.latest?.month||currentLocalIsoDate().slice(0,7);
     if(!displayed || displayed.month!==picker.value) {
       for(const [, [selector]] of Object.entries(byUtility))$(selector).textContent='—';
       $('#kpiCost').textContent='—';
-      $('#heatCostDetails')?.classList.add('hidden');
       drawFinancialPosition(null);
       for(const u of utilities) {
         svgChartEmpty('#mediaChart-'+u,'Načítám skutečné odečty…',760,240);
@@ -287,8 +246,10 @@
     }
     monthOverview(displayed);
   };
+  $('#insightRange')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderHistory(history);});
+  $('#heatRoomFilter')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderHistory(history);});
   picker.addEventListener('change',()=>{
-    displayed=null;serial++;pending=null;
+    displayed=null;history=null;serial++;pending=null;
     if(STATE)renderDashboard();
   });
 })();
