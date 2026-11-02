@@ -98,9 +98,11 @@ window.EnergyInsights = (() => {
     if(note){
       const passiveNames=(currentMonth?.appliances||[]).filter(a=>a.kind==='passive').map(a=>a.name);
       const activeNames=(currentMonth?.appliances||[]).filter(a=>a.kind==='active').map(a=>a.name);
+      const excess=measured.some((v,i)=>observed[i] && passiveRate+activeRate>v+0.001);
       note.textContent='Plná čára: elektroměr. Trvalé: '+(passiveNames.join(', ')||'žádné zadané')+
         '. Cyklické: '+(activeNames.join(', ')||'žádné zadané')+
-        '. Přerušované čáry jsou profilové odhady (aktivní cykly rovnoměrně za měsíc), nikoli měření jednotlivých spotřebičů. Bez odečtů se nepředpovídá.';
+        '. Přerušované čáry jsou profilové odhady (aktivní cykly rovnoměrně za měsíc), nikoli měření jednotlivých spotřebičů. Bez odečtů se nepředpovídá.'+
+        (excess?' V některých dnech model spotřebičů převyšuje celkový odečet; do měřené spotřeby se nepřičítá.':'');
     }
   }
 
