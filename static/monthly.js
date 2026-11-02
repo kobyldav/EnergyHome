@@ -90,8 +90,8 @@
         const extra = gaps.length ? ' (chybí úplný interval: '+gaps.slice(0,3).join(', ')+(gaps.length>3?' a další':'')+')':'';
         return utilityLabel[u]+extra;
       });
-      notes.push({severity:'info',text:'Neúplná data pro '+incomplete.map(u=>utilityLabel[u]).join(', ')+
-        ' — '+missing.join('; ')+'. Některé dny nejsou podloženy dvěma odečty+'. Zobrazená spotřeba zahrnuje jen pokryté dny, ne odhad za zbytek měsíce.'});
+      notes.push({severity:'info',text:'Neúplná data: '+missing.join('; ')+
+        '. Některé dny nemají navazující odečty. Součet obsahuje pouze skutečně pokryté intervaly, ne předpověď za chybějící dny.'});
     }
 
 
