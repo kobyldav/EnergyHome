@@ -21,6 +21,7 @@ from urllib.request import urlopen
 from energy_app.analytics import dashboard
 from energy_app.periods import financial_position, month_consumption
 from energy_app.actuals import confirmed_month
+from energy_app.insights import history_insights
 from energy_app.heat_settlement import apartment_heat_estimate
 from energy_app.debug import build_debug_report
 from energy_app.storage import JsonStore
@@ -676,6 +677,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             data = store.load()
             return self._json({"data": data, "dashboard": dashboard(data)})
+        if path == "/api/insights":
+            qs = parse_qs(urlparse(self.path).query)
+            try:
+                return self._json(history_insights(store.load(), qs.get("month", [""])[0]))
+            except (ValueError, AttributeError, TypeError):
+                return self._json({"error": "Neplatný měsíc."}, 400)
         if path == "/api/month-actual":
             qs = parse_qs(urlparse(self.path).query)
             try:
