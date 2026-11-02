@@ -149,7 +149,7 @@ async function flush() {
   assert($("#usageChartNote").textContent.includes("Pračka"),"Daily model should name the washer");
   assert($("#applianceChart").innerHTML.includes("path"),"Twelve-month appliance breakdown must be drawn");
   assert($("#applianceChartNote").textContent.includes("12 měsíců"),"History chart labels window");
-  assert($("#heatingTrendChartNote").textContent!==undefined || $("#heatingTrendNote").textContent.includes("12 měsíců"),
+  assert($("#heatingTrendNote").textContent.includes("12 měsíců"),
     "Heat history panel must show timeframe");
   assert($("#mediaChart-electricity").innerHTML.includes(" L "),"Cumulative interpolated line must connect daily points");
   assert(!$("#mediaChart-electricity").innerHTML.includes(" H "),"Chart must not use staircase H commands");
