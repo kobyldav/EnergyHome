@@ -27,12 +27,14 @@ def history_insights(data: dict, selected_month: str, today: date | None = None,
               for x in data.get("cycles", [])}
     cycle_keys = {(str(x.get("appliance_id")), str(x.get("month"))) for x in data.get("cycles", [])}
     result = []
+    monthly_cache = {}
     for idx in range(selected_index - count + 1, selected_index + 1):
         y, m0 = divmod(idx, 12)
         if y < 1:
             continue
         month = f"{y:04d}-{m0 + 1:02d}"
         actual = confirmed_month(data, month, today=today)
+        monthly_cache[month] = actual
         days = actual["days"]
         days_covered = sum(bool(d["has_allocation"]["electricity"]) for d in days)
         days_in_month = monthrange(y, m0 + 1)[1]
@@ -78,8 +80,47 @@ def history_insights(data: dict, selected_month: str, today: date | None = None,
             "unassigned_kwh": unassigned,
             "model_excess_kwh": excess,
         })
+    # Finance charts show the selected month *and* its neighbors, never
+    # forecast dates after today. A pre-household month is represented by a
+    # gap rather than manufactured zero costs or zero advances.
+    first_dates = [
+        str(x.get("base_date") or "") for x in
+        data.get("meters", []) + data.get("heat_allocators", [])
+    ] + [
+        str(x.get("effective_from") or "") for x in
+        data.get("tariffs", []) + data.get("advances", [])
+    ]
+    earliest = min((x[:7] for x in first_dates if len(x) >= 7), default="9999-12")
+    current_month = today.strftime("%Y-%m")
+    finance_months = []
+    for idx in range(selected_index - 2, selected_index + 3):
+        y, m0 = divmod(idx, 12)
+        if y < 1:
+            continue
+        month = f"{y:04d}-{m0 + 1:02d}"
+        if month < earliest or month > current_month:
+            finance_months.append({"month": month, "available": False})
+            continue
+        actual = monthly_cache.get(month)
+        if actual is None:
+            actual = confirmed_month(data, month, today=today)
+        finance_months.append({
+            "month": month, "available": True,
+            "balance": actual["balance"], "advance": actual["advance"],
+            "total_cost": actual["total_cost"],
+            "utility_costs": actual["utility_costs"],
+            "fixed_costs": actual["fixed_costs"],
+            "variable_costs": actual["variable_costs"],
+            "as_of": actual["as_of"], "end": actual["end"],
+            "partial": month == current_month or actual["cost_incomplete"] or any(
+                actual["status"][k] in ("partial", "to_date")
+                for k in ("electricity", "cold_water", "hot_water", "gas", "heat")
+            ),
+        })
+
     return {
         "selected_month": selected_month, "months": result,
+        "finance_months": finance_months,
         "basis": "Odečty měřidel jsou rozpočítané mezi skutečně pozorovanými stavy. "
                  "Pračky, ledničky a ostatní spotřebiče jsou modelované z jejich profilů a zadaných cyklů.",
     }
