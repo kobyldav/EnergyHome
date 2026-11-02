@@ -87,7 +87,7 @@ window.EnergyInsights = (() => {
       legend([{label:'Elektroměr',color:colors.measured},
               {label:'Trvalé (profil)',color:colors.passive},
               {label:'Cyklické (profil)',color:colors.active},
-              {label:'Ostatní',color:colors.other}],86).replace(/i="32"/g,'i="32"')+
+              {label:'Ostatní',color:colors.other}],86)+
       line(measured,observed,chart,colors.measured)+
       (passiveRate>0?line(passive,observed,chart,colors.passive,'5 4'):'')+
       (activeRate>0?line(active,observed,chart,colors.active,'5 4'):'')+
@@ -95,7 +95,13 @@ window.EnergyInsights = (() => {
       dots(rows,measured,observed,chart,colors.measured,'Elektroměr','kWh')+
       labels(rows,chart,9);
     const note=document.querySelector('#usageChartNote');
-    if(note)note.textContent='Plná čára = spotřeba rozpočítaná ze skutečných odečtů. Přerušované čáry = odhady podle profilů spotřebičů. Neznámé dny se nedopočítávají.';
+    if(note){
+      const passiveNames=(currentMonth?.appliances||[]).filter(a=>a.kind==='passive').map(a=>a.name);
+      const activeNames=(currentMonth?.appliances||[]).filter(a=>a.kind==='active').map(a=>a.name);
+      note.textContent='Plná čára: elektroměr. Trvalé: '+(passiveNames.join(', ')||'žádné zadané')+
+        '. Cyklické: '+(activeNames.join(', ')||'žádné zadané')+
+        '. Přerušované čáry jsou profilové odhady (aktivní cykly rovnoměrně za měsíc), nikoli měření jednotlivých spotřebičů. Bez odečtů se nepředpovídá.';
+    }
   }
 
   function renderElectricHistory(history){
@@ -111,7 +117,14 @@ window.EnergyInsights = (() => {
     const passive=list.map(m=>Math.min(Number(m.passive_kwh||0),Number(m.electricity_kwh||0)));
     const active=list.map((m,i)=>Math.min(Number(m.active_kwh||0),Math.max(0,measured[i]-passive[i])));
     const other=list.map((m,i)=>Math.max(0,measured[i]-passive[i]-active[i]));
-    const max=Math.max(1,...measured.filter((v,i)=>valid[i]))*1.17;
+    const focus=document.querySelector('#applianceFocus')?.value||'all';
+    const selectedProfile=focus==='all'?null:(list.flatMap(m=>m.appliances||[]).find(a=>a.id===focus)||null);
+    const applianceValues=selectedProfile?list.map(m=>{
+      const entry=(m.appliances||[]).find(a=>a.id===focus);
+      return Number(entry?.estimated_kwh||0);
+    }):[];
+    const max=Math.max(1,...measured.filter((v,i)=>valid[i]),
+      ...(selectedProfile?applianceValues.filter((v,i)=>valid[i]):[]))*1.17;
     const a=axis(760,300,max,'kWh / měsíc',80);
     let areas='';
     // Fill only neighboring months both supported by real readings. Do not
@@ -134,17 +147,25 @@ window.EnergyInsights = (() => {
     }
     const labelsRows=list.map(m=>({label:m.month,short:labelMonth(m.month)}));
     const overflow=list.some(m=>Number(m.model_excess_kwh||0)>0.001);
-    target.innerHTML=a.baseSVG+areas+
-      legend([{label:'Trvalé (model)',color:colors.passive},
+    target.innerHTML=a.baseSVG+(selectedProfile?'':areas)+
+      (selectedProfile
+        ? legend([{label:'Celkem elektroměr',color:colors.measured},
+                  {label:selectedProfile.name.slice(0,19)+' (profil)',color:colors.active}],80)
+        : legend([{label:'Trvalé (model)',color:colors.passive},
               {label:'Cyklické (model)',color:colors.active},
               {label:'Zbytek',color:colors.other},
-              {label:'Celkem měřeno',color:colors.measured}],80)+
+              {label:'Celkem měřeno',color:colors.measured}],80))+
       line(measured,valid,a,colors.measured)+
+      (selectedProfile?line(applianceValues,valid,a,colors.active,'5 4')+
+        dots(labelsRows,applianceValues,valid,a,colors.active,selectedProfile.name+' (profil)','kWh'):'')+
       dots(labelsRows,measured,valid,a,colors.measured,'Naměřená elektřina','kWh')+
       labelsRows.map((m,i)=>'<text class="svg-axis-text" x="'+a.x(i,list.length)+
         '" y="294" text-anchor="middle">'+svg(m.short)+'</text>').join('');
     const note=document.querySelector('#applianceChartNote');
-    if(note)note.textContent='Za '+range()+' měsíců zpět od zvoleného měsíce. Barevné vrstvy jsou modelová spotřeba trvalých a cyklických spotřebičů a dopočtený zbytek. Základ tvoří odečty elektroměru.'+
+    if(note)note.textContent=(selectedProfile?
+      'Za '+range()+' měsíců · '+selectedProfile.name+' je odhad podle '+(selectedProfile.kind==='passive'?'denního profilu':'zadaných cyklů')+
+      ', zatímco celková elektřina vychází z elektroměru.':
+      'Za '+range()+' měsíců zpět od zvoleného měsíce. Barevné vrstvy jsou modelová spotřeba trvalých a cyklických spotřebičů a dopočtený zbytek. Základ tvoří odečty elektroměru.')+
       (overflow?' Pozor: v některých měsících model spotřebičů přesahuje naměřenou spotřebu; přebytek není přičten k celku.':'');
   }
 
@@ -182,7 +203,20 @@ window.EnergyInsights = (() => {
     if(note)note.textContent='Historie rozpočítaných odečtů za '+range()+' měsíců · '+
       (room==='all'?'všechny radiátory':room)+'. Měsíce bez navazujících odečtů zůstávají prázdné.';
   }
-  function rooms(history){
+  function appliances(history){
+    const select=document.querySelector('#applianceFocus');
+    if(!select)return;
+    const previous=select.value||'all';
+    const found=new Map();
+    for(const m of history?.months||[])
+      for(const p of m.appliances||[])
+        found.set(p.id,p.name);
+    const list=[...found].sort((a,b)=>a[1].localeCompare(b[1],'cs'));
+    select.innerHTML='<option value="all">Celý rozpad</option>'+
+      list.map(([id,name])=>'<option value="'+escapeHtml(id)+'">'+escapeHtml(name)+'</option>').join('');
+    select.value=found.has(previous)?previous:'all';
+  }
+    function rooms(history){
     const select=document.querySelector('#heatRoomFilter');
     if(!select)return;
     const previous=select.value||'all';
@@ -194,6 +228,7 @@ window.EnergyInsights = (() => {
   function renderAll(monthData,history){
     renderDaily(monthData,history);
     rooms(history);
+    appliances(history);
     renderElectricHistory(history);
     renderHeatHistory(history);
   }
