@@ -21,6 +21,7 @@ from urllib.request import urlopen
 from energy_app.analytics import dashboard
 from energy_app.periods import financial_position, month_consumption
 from energy_app.actuals import confirmed_month
+from energy_app.insights import history_insights
 from energy_app.heat_settlement import apartment_heat_estimate
 from energy_app.debug import build_debug_report
 from energy_app.storage import JsonStore
@@ -38,7 +39,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 def frontend_build_id() -> str:
     digest = hashlib.sha256()
-    for rel in ("templates/index.html", "static/app.js", "static/monthly.js", "static/debug.js", "static/styles.css", "static/i18n.js"):
+    for rel in ("templates/index.html", "static/app.js", "static/monthly.js", "static/insights.js", "static/debug.js", "static/styles.css", "static/i18n.js"):
         path = BASE_DIR / rel
         digest.update(rel.encode("utf-8"))
         try:
@@ -609,6 +610,7 @@ class Handler(BaseHTTPRequestHandler):
             "/static/i18n.js": static_dir / "i18n.js",
             "/static/app.js": static_dir / "app.js",
             "/static/monthly.js": static_dir / "monthly.js",
+            "/static/insights.js": static_dir / "insights.js",
             "/static/debug.js": static_dir / "debug.js",
         }
         for asset_url, asset_path in asset_paths.items():
@@ -676,6 +678,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             data = store.load()
             return self._json({"data": data, "dashboard": dashboard(data)})
+        if path == "/api/insights":
+            qs = parse_qs(urlparse(self.path).query)
+            try:
+                return self._json(history_insights(store.load(), qs.get("month", [""])[0]))
+            except (ValueError, AttributeError, TypeError):
+                return self._json({"error": "Neplatný měsíc."}, 400)
         if path == "/api/month-actual":
             qs = parse_qs(urlparse(self.path).query)
             try:

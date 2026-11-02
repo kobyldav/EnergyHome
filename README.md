@@ -151,6 +151,30 @@ monthly overview groups the attributed units by room/radiator.
 
 Local JSON and encrypted GitHub synchronization credentials are preserved.
 
+### Appliance and heating history (dashboard)
+
+- **Daily electricity** uses one continuous line for actual between-reading
+  average kWh/day. Fridge/always-on profiles and washer/cyclic usage are
+  separate dashed model lines. Active devices use the **saved cycle count
+  for the selected month**, divided uniformly over that month and displayed
+  only for days covered by the electricity meter.
+- **12-month electricity composition** shows measured electricity as a line
+  with estimated always-on use, estimated cyclic use and the measured remainder
+  as labeled layers. Unknown months are **gaps**, not fake zero readings.
+  Choose a 6- or 12-month window and an individual appliance to display its
+  estimated history separately from metered totals.
+- **Heating evolution** now covers the same historical month window, with a
+  room filter. Calendar-month heating totals reuse the same observed-interval
+  allocation logic as the monthly dashboard, not a separate forecast.
+- Appliance estimates are never added to the household meter totals;
+  estimates exceeding measured consumption are called out and clipped in
+  the visual composition. Profiles are not direct appliance measurements.
+- Missing readings explicitly identify incomplete meters/rooms where possible,
+  rather than displaying a generic claim that the whole month is wrong.
+- The detailed provisional heat-cost equation below the finance summary is
+  hidden as requested; its configured rate and monetary contribution remain
+  part of total costs and balance.
+
 ### Czech and English interface
 
 The application supports:
