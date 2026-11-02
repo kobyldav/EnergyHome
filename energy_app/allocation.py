@@ -127,11 +127,10 @@ def allocate_daily(data: dict, month_start: date, month_end: date, today: date):
                 "room": str(allocator.get("room") or "Bez místnosti"),
                 "utility": "heat", "assumed_zero": True,
             }
-            try:
-                base_day = date.fromisoformat(str(allocator.get("base_date") or ""))
-            except ValueError:
-                base_day = None
-            day = max(month_start, base_day + timedelta(days=1)) if base_day else month_start
+            # User explicitly asserts the radiator has always been off;
+            # otherwise an October 9 baseline would falsely make Oct 1-9
+            # unknown even though the radiator is never used.
+            day = month_start
             while day <= end:
                 accumulate(day, "heat", 0.0, entity_id, False)
                 day += timedelta(days=1)
