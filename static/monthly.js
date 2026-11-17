@@ -339,6 +339,7 @@
   $('#financeChartMode')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderFinancial(history);});
   $('#insightRange')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderHistory(history);});
   $('#heatRoomFilter')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderHistory(history);});
+  $('#applianceFocus')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderHistory(history);});
   picker.addEventListener('change',()=>{
     displayed=null;history=null;serial++;pending=null;
     if(STATE)renderDashboard();

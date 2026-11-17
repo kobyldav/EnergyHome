@@ -99,7 +99,7 @@ async function fetch(url) {
         electricity_status:i>=10?'partial':'missing',
         heat_status:i>=10?'partial':'missing',
         electricity_covered_days:i>=10?10:0,
-        heat_devices:[{id:'heat',room:'Kuchyně',name:'Radiátor',amount:i>=10?i*2:0,has_data:i>=10}],
+        heat_devices:[{id:'heat',room:'Kuchyně',name:'Radiátor',amount:i>=10?i*2:0,has_data:i>=10},{id:'empty',room:'Bez odečtů',name:'Radiátor',amount:0,has_data:false}],
         appliances:[
           {id:'fridge',name:'Lednička',kind:'passive',daily_kwh:0.7,estimated_kwh:i>=10?7:0,cycles:null},
           {id:'washer',name:'Pračka',kind:'active',daily_kwh:0.16,estimated_kwh:i>=10?1.6:0,cycles:i===11?5:null}
