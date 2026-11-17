@@ -10,6 +10,7 @@ Track electricity, gas, water, heating, meter readings, payments and consumption
 [![Python](https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/kobyldav/EnergyHome)](https://github.com/kobyldav/EnergyHome/releases)
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/kobyldav/badge.svg)](https://hub.xerj.org/contributors/kobyldav)
 
 </div>
 
