@@ -20,7 +20,7 @@ function element(name) {
   const obj = {
     name, value: "", textContent: "", innerHTML: "", style: {}, dataset: {},
     classList: { toggle() {}, add() {}, remove() {} }, disabled: false,
-    setAttribute() {}, getAttribute() { return null; },
+    attributes: {}, setAttribute(k,v) { this.attributes[k]=v; }, getAttribute(k) { return this.attributes[k]??null; },
     addEventListener(type, callback) { listeners.push({name, type, callback}); },
     elements: new Proxy({}, {get(target, key) {
       if (!target[key]) target[key] = element(name+"."+String(key));
@@ -197,12 +197,30 @@ async function flush() {
   assert($("#mediaChart-electricity").innerHTML.includes(" L "),"Cumulative interpolated line must connect daily points");
   assert(!$("#mediaChart-electricity").innerHTML.includes(" H "),"Chart must not use staircase H commands");
   assert(!$("#mediaChart-gas").innerHTML.includes("svg-grid-line"),"Missing readings have no axes");
+  assert.equal($("#mediaValue-electricity").textContent,"100 kWh");
+  assert($("#mediaCost-electricity").textContent.includes("205"),"Media card shows known costs");
+  assert.equal($("#mediaValue-gas").textContent,"—");
+  assert($("#mediaStat-electricity").innerHTML.includes("Průměr / pokrytý den"),"Focused media shows daily average");
+  assert($("#mediaChart-electricity").innerHTML.includes("2026-10-05"),"Every covered day has a tooltip");
+  const selectGas=listeners.find(x=>x.name==="#mediaSelect-gas"&&x.type==="click");
+  selectGas.callback();
+  assert.equal($("#mediaDetailTitle").textContent,"Plyn");
+  assert.equal($("#mediaSelect-gas").getAttribute("aria-pressed"),"true");
+  assert.equal($("#mediaSelect-electricity").getAttribute("aria-pressed"),"false");
+  listeners.find(x=>x.name==="#mediaSelect-electricity"&&x.type==="click").callback();
+  listeners.find(x=>x.name==="#mediaModeDaily"&&x.type==="click").callback();
+  assert($("#mediaChart-electricity").innerHTML.includes("kWh / den"),"Daily mode uses daily units");
+  assert(!$("#mediaChart-electricity").innerHTML.includes("svg-media-line"),"Daily mode draws bars");
+  listeners.find(x=>x.name==="#mediaModeCumulative"&&x.type==="click").callback();
+  assert($("#mediaChart-electricity").innerHTML.includes("svg-media-line"),"Cumulative mode restores line");
+
   const handler=listeners.find(x=>x.name==="#dashboardMonthPicker"&&x.type==="change");
   assert(handler,"Period control must update dashboard");
   $("#dashboardMonthPicker").value="2026-09";
   handler.callback();
   await flush();
   assert($("#billingPeriod").textContent.includes("Září 2026"),"All panels update together");
+  assert.equal($("#mediaDetailMonth").textContent,"Září 2026");
   assert($("#expenseTreeChart").innerHTML.includes("26/09"),"Expense structure follows month changes");
   assert.equal($("#currentBalance").textContent,"Neúplné","Missing heat rate must not show complete balance");
   assert(!$("#actualCost").textContent.includes("orientační náklady"),"Removed heat detail must not reappear");

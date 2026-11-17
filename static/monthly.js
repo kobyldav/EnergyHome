@@ -2,6 +2,8 @@
    Included after app.js so legacy pages/forms stay compatible. */
 (() => {
   let displayed = null;
+  let selectedMedia = 'electricity';
+  let mediaMode = 'cumulative';
   let history = null;
   let stateIdentity = null;
   let pending = null;
@@ -109,7 +111,7 @@
     drawWaterfall(b);
     renderCostSankey([m]);
     renderMonthHeat(v);
-    for (const u of utilities) drawActualReadingChart(u,v);
+    renderMediaDetail(v);
   }
 
   function renderMonthHeat(v){
@@ -145,55 +147,132 @@
       rows+'</tbody></table></div>';
   }
 
-  // Connected, linearly interpolated cumulative usage between actual readings.
-  // Linear slopes reflect average intervals, not direct daily measurements.
+  const mediaPriceKeys={electricity:'electricity_per_kwh',cold_water:'cold_water_per_m3',
+    hot_water:'hot_water_per_m3',gas:'gas_per_m3',heat:'heat_per_gj'};
+  const mediaFixedKeys={electricity:'electricity_fixed_monthly',cold_water:'cold_water_fixed_monthly',
+    hot_water:'hot_water_fixed_monthly',gas:'gas_fixed_monthly',heat:'heat_fixed_monthly'};
+  const mediaUnit=(u,v)=>u==='heat'&&v?.heat_cost_estimate?.mode==='metered_gj'?'GJ':utilitySvgMeta[u].unit;
+  function mediaCostInfo(u,v){
+    const fixed=Number(v.fixed_costs?.[u]||0), variable=Number(v.variable_costs?.[u]||0);
+    const measured=v.measured?.[u]!=null&&v.status?.[u]!=='missing';
+    const tariffKnown=Boolean(v.tariff?.effective_from&&v.tariff.effective_from!=='0000-00-00');
+    const unpriced=u==='heat'&&v.cost_incomplete;
+    const fixedKnown=fixed!==0||(tariffKnown&&Number(v.tariff?.[mediaFixedKeys[u]]||0)!==0);
+    const variableKnown=!unpriced&&measured&&(variable!==0||(tariffKnown&&Number(v.tariff?.[mediaPriceKeys[u]]||0)>0));
+    const known=fixedKnown||variableKnown;
+    const partial=unpriced||(known&&Number(v.tariff?.[mediaPriceKeys[u]]||0)>0&&v.status?.[u]!=='complete'&&v.status?.[u]!=='to_date');
+    return {fixed,variable,fixedKnown,variableKnown,known,partial,total:fixed+variable};
+  }
+  function mediaStatus(u,v){
+    if(u==='heat'&&v.coverage?.heat?.some(entry=>entry.assumed_zero)&&v.status?.heat==='complete')return 'Včetně vypnutých radiátorů';
+    return ({complete:'Úplné odečty',to_date:'Průběžné odečty',partial:'Částečné odečty',missing:'Bez odečtů'})[v.status?.[u]]||'Bez odečtů';
+  }
+  function updateMediaSelection(){
+    for(const u of utilities){
+      const active=u===selectedMedia,btn=$('#mediaSelect-'+u),panel=$('#mediaPanel-'+u);
+      btn?.classList.toggle('active',active);
+      btn?.setAttribute('aria-pressed',String(active));
+      panel?.classList.toggle('hidden',!active);
+    }
+    $('#mediaDetailTitle').textContent=utilityLabel[selectedMedia];
+    $('#mediaDetailStatus').textContent=displayed?mediaStatus(selectedMedia,displayed):'';
+    for(const [id,mode] of [['mediaModeCumulative','cumulative'],['mediaModeDaily','daily']]){
+      const btn=$('#'+id),active=mediaMode===mode;
+      btn?.classList.toggle('active',active);
+      btn?.setAttribute('aria-pressed',String(active));
+    }
+  }
+  function renderMediaDetail(v){
+    $('#mediaDetailMonth').textContent=monthName(v.month);
+    for(const u of utilities){
+      const value=v.measured?.[u],cost=mediaCostInfo(u,v);
+      $('#mediaValue-'+u).textContent=value==null?'—':nf.format(value)+' '+mediaUnit(u,v);
+      $('#mediaCost-'+u).textContent=cost.known?money(cost.total)+(cost.partial?' · neúplné':''):'— Kč';
+      $('#mediaStatus-'+u).textContent=mediaStatus(u,v);
+      drawActualReadingChart(u,v);
+    }
+    updateMediaSelection();
+  }
+  function chooseMedia(u){
+    if(!utilities.includes(u))return;
+    selectedMedia=u;updateMediaSelection();
+  }
+  function chooseMediaMode(mode){
+    mediaMode=mode;updateMediaSelection();
+    if(displayed)for(const u of utilities)drawActualReadingChart(u,displayed);
+  }
+  // Daily allocations and cumulative totals use the same observed intervals.
   function drawActualReadingChart(utility,v){
     const svg=$('#mediaChart-'+utility),stat=$('#mediaStat-'+utility);
     if(!svg||!stat)return;
-    const days=(v.days||[]).filter(d=>d.date<=currentLocalIsoDate());
+    const days=(v.days||[]).filter(d=>d.date<=currentLocalIsoDate()&&(!v.as_of||d.date<=v.as_of));
     const observed=days.filter(d=>Boolean(d.has_allocation?.[utility]));
-    const meta=utilitySvgMeta[utility],W=760,H=240,left=82,right=24,top=28,bottom=43;
+    const meta=utilitySvgMeta[utility],unit=mediaUnit(utility,v),W=760,H=240,left=72,right=26,top=25,bottom=38;
     const total=observed.reduce((sum,d)=>sum+Number(d.measured?.[utility]||0),0);
     const count=days.reduce((sum,d)=>sum+Number(d.readings?.[utility]||0),0);
-    stat.innerHTML=observed.length
-      ? '<span><b>'+nf.format(total)+'</b> '+svgSafe(meta.unit)+'</span>'+
-        '<span>'+observed.length+' pokrytých dnů</span><span>'+count+' odečtů</span>'
-      : '<span>Bez navazujících odečtů</span>';
+    const cost=mediaCostInfo(utility,v);
+    const safe=svgSafe;
+    const metrics=[
+      ['Spotřeba',observed.length?nf.format(total)+' '+unit:'—'],
+      ['Průměr / pokrytý den',observed.length?nf.format(total/observed.length)+' '+unit:'—'],
+      ['Náklady',cost.known?money(cost.total)+(cost.partial?'*':''):'—'],
+      ['Fixní / proměnlivé',(cost.fixedKnown?money(cost.fixed):'—')+' / '+(cost.variableKnown?money(cost.variable):'—')],
+      ['Pokryté dny / odečty',observed.length?observed.length+' / '+days.length+' · '+count:'— / '+count]
+    ];
+    stat.innerHTML=metrics.map(([label,value])=>'<div class="media-metric"><small>'+safe(label)+'</small><strong>'+safe(value)+'</strong></div>').join('');
     if(!observed.length){
       svgChartEmpty('#mediaChart-'+utility,'Zatím nejsou dostupné odečty.',W,H);
       return;
     }
     const first=observed[0].day,last=observed[observed.length-1].day;
-    const scaleMax=Math.max(0.001,total*1.12);
-    const plotW=W-left-right,plotH=H-top-bottom;
-    const x=day=>first===last?left+plotW/2:left+(day-first)/(last-first)*plotW;
-    const y=value=>top+plotH-(value/scaleMax)*plotH;
-    const grid=[];
+    const daily=mediaMode==='daily';
+    const plotW=W-left-right,plotH=H-top-bottom,base=H-bottom;
+    const values=observed.map(d=>Number(d.measured?.[utility]||0));
+    const scaleMax=Math.max(.001,daily?Math.max(...values):total)*1.12;
+    const dayWidth=plotW/Math.max(1,last-first+1);
+    const x=day=>left+(day-first+.5)*dayWidth;
+    const y=value=>base-value/scaleMax*plotH;
+    let grid='',labels='',path='',markers='',bars='',fills='',hits='',cumulative=0,lastCovered=null,segment=[];
+    const axisFmt=new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:2});
     for(let i=0;i<=4;i++){
       const val=scaleMax*(1-i/4),gy=top+plotH*i/4;
-      grid.push('<line class="svg-grid-line" x1="'+left+'" x2="'+(W-right)+'" y1="'+gy+'" y2="'+gy+'"></line>');
-      grid.push('<text class="svg-axis-text" x="'+(left-9)+'" y="'+(gy+4)+'" text-anchor="end">'+svgSafe(nf.format(val))+'</text>');
+      grid+='<line class="svg-grid-line" x1="'+left+'" x2="'+(W-right)+'" y1="'+gy+'" y2="'+gy+'"></line>'+
+        '<text class="svg-axis-text" x="'+(left-9)+'" y="'+(gy+4)+'" text-anchor="end">'+safe(axisFmt.format(val))+'</text>';
     }
-    let cumulative=0,lastCovered=null,path='',markers='';
+    function closeArea(){
+      if(segment.length>1)fills+='<path d="M '+segment[0][0]+' '+base+' L '+segment.map(p=>p.join(' ')).join(' L ')+' L '+segment[segment.length-1][0]+' '+base+' Z" fill="'+meta.soft+'" opacity=".65"></path>';
+      segment=[];
+    }
     for(const d of days){
-      if(!d.has_allocation?.[utility]){lastCovered=null;continue;}
-      cumulative+=Number(d.measured?.[utility]||0);
-      const xx=x(d.day),yy=y(cumulative);
-      path+=(lastCovered===d.day-1?' L ':' M ')+xx.toFixed(2)+' '+yy.toFixed(2);
-      lastCovered=d.day;
-      if(Number(d.readings?.[utility]||0)>0){
-        markers+='<circle cx="'+xx+'" cy="'+yy+'" r="4.5" style="fill:'+meta.color+'"><title>'+
-          svgSafe(d.date+' · kumulativně '+nf.format(cumulative)+' '+meta.unit)+'</title></circle>';
+      if(!d.has_allocation?.[utility]){lastCovered=null;closeArea();continue;}
+      const increment=Number(d.measured?.[utility]||0);
+      cumulative+=increment;
+      const xx=x(d.day),yy=y(daily?increment:cumulative);
+      if(daily){
+        bars+='<rect x="'+(xx-dayWidth*.34)+'" y="'+yy+'" width="'+(dayWidth*.68)+'" height="'+Math.max(0,base-yy)+'" rx="2" fill="'+meta.color+'" opacity=".85"></rect>';
+      }else{
+        const connected=lastCovered===d.day-1;
+        path+=(connected?' L ':' M ')+xx.toFixed(2)+' '+yy.toFixed(2);
+        if(!connected)closeArea();
+        segment.push([xx,yy]);
+        const next=days.find(row=>row.day===d.day+1);
+        if(Number(d.readings?.[utility]||0)>0||!connected||!next?.has_allocation?.[utility])
+          markers+='<circle cx="'+xx+'" cy="'+yy+'" r="'+(Number(d.readings?.[utility]||0)>0?4:2.5)+'" fill="'+meta.color+'" stroke="white" stroke-width="1.3"></circle>';
       }
+      lastCovered=d.day;
+      const title=d.date+' · '+nf.format(increment)+' '+unit+' / den · '+nf.format(cumulative)+' '+unit+' celkem'+
+        (d.estimated?.[utility]?' · rozpočítáno mezi odečty':'');
+      hits+='<rect x="'+(xx-dayWidth/2)+'" y="'+top+'" width="'+dayWidth+'" height="'+plotH+'" fill="transparent" pointer-events="all"><title>'+safe(title)+'</title></rect>';
     }
-    const labelStep=Math.max(1,Math.ceil((last-first+1)/9));
-    const labels=observed.filter(d=>d.day===first||d.day===last||(d.day-first)%labelStep===0).map(d=>
-      '<text class="svg-axis-text" x="'+x(d.day)+'" y="'+(H-12)+'" text-anchor="middle">'+d.day+'</text>').join('');
+    closeArea();
+    const step=Math.max(1,Math.ceil((last-first+1)/9));
+    for(let day=first;day<=last;day++){
+      if(day!==first&&day!==last&&(day-first)%step!==0)continue;
+      labels+='<text class="svg-axis-text" x="'+x(day)+'" y="'+(H-12)+'" text-anchor="middle">'+day+'</text>';
+    }
     svg.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+
-      grid.join('')+
-      '<path class="svg-media-line" d="'+path+'" style="stroke:'+meta.color+'"></path>'+
-      markers+labels+
-      '<text class="svg-unit-label" x="'+left+'" y="14">'+svgSafe(meta.unit)+' · KUMULATIVNĚ</text>';
+      grid+(daily?bars:fills+'<path class="svg-media-line" d="'+path+'" style="stroke:'+meta.color+'"></path>'+markers)+labels+hits+
+      '<text class="svg-unit-label" x="'+left+'" y="14">'+safe(unit+(daily?' / den':' · kumulativně'))+'</text>';
   }
 
   let requestedKey='';
@@ -239,7 +318,12 @@
       for(const u of utilities) {
         svgChartEmpty('#mediaChart-'+u,'Načítám skutečné odečty…',760,240);
         $('#mediaStat-'+u).textContent='';
+        $('#mediaValue-'+u).textContent='—';
+        $('#mediaCost-'+u).textContent='—';
+        $('#mediaStatus-'+u).textContent='Načítám…';
       }
+      $('#mediaDetailMonth').textContent=monthName(picker.value);
+      updateMediaSelection();
       const other=['costChart','usageChart','applianceChart','cashflowChart','balanceTrendChart',
         'heatingTrendChart','expenseTreeChart','waterfallChart','costSankey'];
       for(const id of other)svgChartEmpty('#'+id,'Načítám data za měsíc…',id==='expenseTreeChart'||id==='waterfallChart'||id==='costSankey'?960:760,id==='expenseTreeChart'?320:280);
@@ -248,6 +332,9 @@
     }
     monthOverview(displayed);
   };
+  for(const u of utilities)$('#mediaSelect-'+u)?.addEventListener('click',()=>chooseMedia(u));
+  $('#mediaModeCumulative')?.addEventListener('click',()=>chooseMediaMode('cumulative'));
+  $('#mediaModeDaily')?.addEventListener('click',()=>chooseMediaMode('daily'));
   $('#financeChartMode')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderFinancial(history);});
   $('#insightRange')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderHistory(history);});
   $('#heatRoomFilter')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderHistory(history);});

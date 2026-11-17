@@ -117,30 +117,70 @@
             <select id="heatRoomFilter" aria-label="Zobrazit konkrétní místnost"><option value="all">Všechny místnosti</option></select>
           </label></div><svg id="heatingTrendChart" class="svg-chart dashboard-svg-chart" viewBox="0 0 760 280" role="img" aria-label="Spotřeba tepla za poslední měsíce podle místností"></svg></article>
       </div>
-      <article class="card svg-analytics-card">
+      <article class="card svg-analytics-card media-detail-card">
         <div class="card-head svg-analytics-head">
           <div><p class="eyebrow">DETAIL MÉDIÍ</p><h2>Vývoj spotřeby za měsíc</h2></div>
+          <span id="mediaDetailMonth" class="media-detail-period"></span>
         </div>
-        <div class="media-svg-grid">
-          <section class="media-svg-panel" data-utility-panel="electricity">
-            <div class="media-svg-head"><div><span class="media-dot media-electricity"></span><h3>Elektřina</h3><small>kWh</small></div><div id="mediaStat-electricity" class="media-svg-stats"></div></div>
-            <svg id="mediaChart-electricity" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby elektřiny"></svg>
+        <div class="media-picker" role="group" aria-label="Výběr média">
+          <button type="button" id="mediaSelect-electricity" class="media-choice active" data-media="electricity" aria-pressed="true" aria-controls="mediaPanel-electricity">
+            <span class="media-choice-label"><span class="media-dot media-electricity"></span>Elektřina</span>
+            <strong id="mediaValue-electricity">—</strong>
+            <span id="mediaCost-electricity" class="media-choice-cost">—</span>
+            <small id="mediaStatus-electricity" class="media-choice-status"></small>
+          </button>
+          <button type="button" id="mediaSelect-cold_water" class="media-choice" data-media="cold_water" aria-pressed="false" aria-controls="mediaPanel-cold_water">
+            <span class="media-choice-label"><span class="media-dot media-cold_water"></span>Studená voda</span>
+            <strong id="mediaValue-cold_water">—</strong>
+            <span id="mediaCost-cold_water" class="media-choice-cost">—</span>
+            <small id="mediaStatus-cold_water" class="media-choice-status"></small>
+          </button>
+          <button type="button" id="mediaSelect-hot_water" class="media-choice" data-media="hot_water" aria-pressed="false" aria-controls="mediaPanel-hot_water">
+            <span class="media-choice-label"><span class="media-dot media-hot_water"></span>Teplá voda</span>
+            <strong id="mediaValue-hot_water">—</strong>
+            <span id="mediaCost-hot_water" class="media-choice-cost">—</span>
+            <small id="mediaStatus-hot_water" class="media-choice-status"></small>
+          </button>
+          <button type="button" id="mediaSelect-gas" class="media-choice" data-media="gas" aria-pressed="false" aria-controls="mediaPanel-gas">
+            <span class="media-choice-label"><span class="media-dot media-gas"></span>Plyn</span>
+            <strong id="mediaValue-gas">—</strong>
+            <span id="mediaCost-gas" class="media-choice-cost">—</span>
+            <small id="mediaStatus-gas" class="media-choice-status"></small>
+          </button>
+          <button type="button" id="mediaSelect-heat" class="media-choice" data-media="heat" aria-pressed="false" aria-controls="mediaPanel-heat">
+            <span class="media-choice-label"><span class="media-dot media-heat"></span>Teplo</span>
+            <strong id="mediaValue-heat">—</strong>
+            <span id="mediaCost-heat" class="media-choice-cost">—</span>
+            <small id="mediaStatus-heat" class="media-choice-status"></small>
+          </button>
+        </div>
+        <div class="media-detail-toolbar">
+          <div class="media-detail-heading"><h3 id="mediaDetailTitle">Elektřina</h3><small id="mediaDetailStatus"></small></div>
+          <div class="media-mode" role="group" aria-label="Zobrazení spotřeby">
+            <button type="button" id="mediaModeCumulative" class="active" aria-pressed="true">Kumulativně</button>
+            <button type="button" id="mediaModeDaily" aria-pressed="false">Po dnech</button>
+          </div>
+        </div>
+        <div class="media-detail-grid">
+          <section id="mediaPanel-electricity" class="media-detail-panel" aria-label="Elektřina">
+            <div id="mediaStat-electricity" class="media-detail-stats"></div>
+            <svg id="mediaChart-electricity" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Elektřina – vývoj spotřeby"></svg>
           </section>
-          <section class="media-svg-panel" data-utility-panel="cold_water">
-            <div class="media-svg-head"><div><span class="media-dot media-cold_water"></span><h3>Studená voda</h3><small>m³</small></div><div id="mediaStat-cold_water" class="media-svg-stats"></div></div>
-            <svg id="mediaChart-cold_water" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby studené vody"></svg>
+          <section id="mediaPanel-cold_water" class="media-detail-panel hidden" aria-label="Studená voda">
+            <div id="mediaStat-cold_water" class="media-detail-stats"></div>
+            <svg id="mediaChart-cold_water" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Studená voda – vývoj spotřeby"></svg>
           </section>
-          <section class="media-svg-panel" data-utility-panel="hot_water">
-            <div class="media-svg-head"><div><span class="media-dot media-hot_water"></span><h3>Teplá voda</h3><small>m³</small></div><div id="mediaStat-hot_water" class="media-svg-stats"></div></div>
-            <svg id="mediaChart-hot_water" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby teplé vody"></svg>
+          <section id="mediaPanel-hot_water" class="media-detail-panel hidden" aria-label="Teplá voda">
+            <div id="mediaStat-hot_water" class="media-detail-stats"></div>
+            <svg id="mediaChart-hot_water" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Teplá voda – vývoj spotřeby"></svg>
           </section>
-          <section class="media-svg-panel" data-utility-panel="gas">
-            <div class="media-svg-head"><div><span class="media-dot media-gas"></span><h3>Plyn</h3><small>m³</small></div><div id="mediaStat-gas" class="media-svg-stats"></div></div>
-            <svg id="mediaChart-gas" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby plynu"></svg>
+          <section id="mediaPanel-gas" class="media-detail-panel hidden" aria-label="Plyn">
+            <div id="mediaStat-gas" class="media-detail-stats"></div>
+            <svg id="mediaChart-gas" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Plyn – vývoj spotřeby"></svg>
           </section>
-          <section class="media-svg-panel media-svg-panel-wide" data-utility-panel="heat">
-            <div class="media-svg-head"><div><span class="media-dot media-heat"></span><h3>Teplo</h3><small>provizorní jednotky</small></div><div id="mediaStat-heat" class="media-svg-stats"></div></div>
-            <svg id="mediaChart-heat" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Vývoj spotřeby tepla"></svg>
+          <section id="mediaPanel-heat" class="media-detail-panel hidden" aria-label="Teplo">
+            <div id="mediaStat-heat" class="media-detail-stats"></div>
+            <svg id="mediaChart-heat" class="svg-chart media-svg-chart" viewBox="0 0 760 240" role="img" aria-label="Teplo – vývoj spotřeby"></svg>
           </section>
         </div>
       </article>
