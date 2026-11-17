@@ -76,6 +76,33 @@ class HistoricalInsightsTests(unittest.TestCase):
             self.assertEqual(month["active_kwh"],0)
             self.assertIsNone(month["unassigned_kwh"])
 
+    def test_cost_history_uses_monthly_tariffs_and_readings_without_forecasting(self):
+        data = self.sample()
+        data["tariffs"] = [
+            {"effective_from": "2026-09-01", "electricity_per_kwh": 5,
+             "electricity_fixed_monthly": 90},
+            {"effective_from": "2026-11-01", "electricity_per_kwh": 6,
+             "electricity_fixed_monthly": 120},
+        ]
+        results = history_insights(data, "2026-12", date(2026, 11, 2))
+        bymonth = {m["month"]: m for m in results["months"]}
+        self.assertIsNone(bymonth["2026-08"]["fixed_cost"])
+        self.assertIsNone(bymonth["2026-08"]["variable_cost"])
+        self.assertAlmostEqual(bymonth["2026-09"]["fixed_cost"], 90)
+        self.assertIsNone(bymonth["2026-09"]["variable_cost"])
+        self.assertAlmostEqual(bymonth["2026-10"]["fixed_cost"], 90)
+        self.assertAlmostEqual(bymonth["2026-10"]["variable_cost"], 150)
+        self.assertAlmostEqual(bymonth["2026-11"]["fixed_cost"], 8)
+        self.assertAlmostEqual(bymonth["2026-11"]["variable_cost"], 6)
+        self.assertTrue(bymonth["2026-11"]["cost_partial"])
+        self.assertIsNone(bymonth["2026-12"]["fixed_cost"])
+        self.assertIsNone(bymonth["2026-12"]["variable_cost"])
+
+    def test_cost_history_with_no_tariff_has_no_cost_points(self):
+        results = history_insights(self.sample(), "2026-11", date(2026, 11, 2))
+        self.assertTrue(all(m["fixed_cost"] is None and m["variable_cost"] is None
+                            for m in results["months"]))
+
     def test_invalid_months_rejected(self):
         for month in ("", "2026-13", "2026-1", "not a month"):
             with self.assertRaises(ValueError):

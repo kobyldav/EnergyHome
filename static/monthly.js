@@ -101,7 +101,6 @@
       notes.push({severity:'warning',text:'Je čas zkontrolovat platnost smluv a ceníků.'});
     $('#alerts').innerHTML = notes.map(n=>'<div class="alert '+n.severity+'"><span>'+escapeHtml(n.text)+'</span></div>').join('');
 
-    drawCostChart([m]);
     // Appliance share is only a configured model, never an actual device reading.
     window.EnergyInsights?.renderAll(v,history);
     // Historical finance lines are rendered by EnergyInsights from neighbor months.

@@ -261,6 +261,24 @@ window.EnergyInsights = (() => {
       '" y1="'+g.y(0)+'" y2="'+g.y(0)+'" class="svg-zero-line"></line>';
     return {markup:backdrop+output+financeLabels(list,g,H),x};
   }
+  function renderCostHistory(history){
+    const target=document.querySelector('#costChart');
+    if(!target)return;
+    const list=(history?.months||[]).slice(-range()).map(m=>({
+      ...m,available:m.fixed_cost!=null||m.variable_cost!=null,partial:m.cost_partial
+    }));
+    if(!list.some(m=>m.available)){
+      svgChartEmpty('#costChart','Zatím nejsou doložené náklady.',760,280);
+      return;
+    }
+    historyMonth=history?.selected_month||'';
+    const series=[
+      {label:'Fixní',color:'#799fba',strong:true,value:r=>r.fixed_cost},
+      {label:'Proměnlivé',color:'#277f72',strong:true,value:r=>r.variable_cost}
+    ];
+    target.innerHTML=plotFinanceLines(list,series,760,280).markup+
+      legend(series,82);
+  }
   function renderFinancial(history){
     const list=financeView(history);
     historyMonth=history?.selected_month||'';
@@ -295,6 +313,7 @@ window.EnergyInsights = (() => {
   }
   function renderAll(monthData,history){
     renderDaily(monthData,history);
+    renderCostHistory(history);
     rooms(history);
     appliances(history);
     renderElectricHistory(history);
@@ -302,6 +321,7 @@ window.EnergyInsights = (() => {
     renderFinancial(history);
   }
   function renderHistory(history){
+    renderCostHistory(history);
     renderElectricHistory(history);
     renderHeatHistory(history);
   }

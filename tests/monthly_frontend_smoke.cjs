@@ -89,6 +89,7 @@ async function fetch(url) {
       }),
       months:indexes.map((m,i)=>({
         month:m,electricity_kwh:i>=10?i*10:null,
+        fixed_cost:i>=9?50+i:null,variable_cost:i>=10?150+i*5:null,cost_partial:i===11,
         heat_units:i>=10?i*2:null,
         electricity_status:i>=10?'partial':'missing',
         heat_status:i>=10?'partial':'missing',
@@ -159,6 +160,14 @@ async function flush() {
   assert($("#usageChart").innerHTML.includes("stroke-dasharray"),"Appliance model lines must be visibly distinct");
   assert($("#usageChart").innerHTML.includes("Trvalé (profil)"),"Daily chart retains passive profile legend");
   assert($("#usageChart").innerHTML.includes("Cyklické (profil)"),"Daily chart retains active profile legend");
+  const costs=$("#costChart").innerHTML;
+  assert(costs.includes("11/25")&&costs.includes("10/26"),"Cost chart shows twelve months");
+  assert(costs.includes("Fixní")&&costs.includes("Proměnlivé"),"Cost chart has two series");
+  assert(costs.includes("2026-08 · Fixní"),"Fixed fees are plotted even without consumption readings");
+  assert(!costs.includes("2026-08 · Proměnlivé"),"Missing consumption must not be a zero point");
+  assert(costs.includes("2026-09 · Proměnlivé")&&costs.includes("2026-10 · Proměnlivé"),"Variable costs plotted across months");
+  assert(costs.includes(" L "),"Historical costs must have connected lines");
+  assert(costs.includes("zatím neúplné období"),"Incomplete month identified in tooltip");
   assert($("#applianceChart").innerHTML.includes("path"),"Twelve-month appliance breakdown must be drawn");
   assert($("#applianceChart").innerHTML.includes("11/25"),"History chart includes the first of twelve months");
   assert($("#balanceTrendChart").innerHTML.includes("09/26"),"Balance must include September neighbor");
@@ -200,6 +209,8 @@ async function flush() {
   assert($("#heatingTrendChart").innerHTML.includes("svg-grid-line"),"Room with readings restores heat chart");
   $("#insightRange").value="6";
   listeners.find(x=>x.name==="#insightRange"&&x.type==="change").callback();
+  assert($("#costChart").innerHTML.includes("04/26"),"Six-month cost history begins in April");
+  assert(!$("#costChart").innerHTML.includes("10/25"),"Six-month cost history excludes older months");
   assert($("#applianceChart").innerHTML.includes("04/26"),"Six-month history begins in April");
   assert(!$("#applianceChart").innerHTML.includes("10/25"),"Six-month history excludes older months");
   assert(!$("#heatingTrendChart").innerHTML.includes("10/25"),"Heat history follows the selected range");

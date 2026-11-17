@@ -11,6 +11,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 
 from energy_app.actuals import confirmed_month
+from energy_app.analytics import UTILITIES
 
 
 def history_insights(data: dict, selected_month: str, today: date | None = None, count: int = 12) -> dict:
@@ -67,8 +68,21 @@ def history_insights(data: dict, selected_month: str, today: date | None = None,
              "amount": d["amount"], "has_data": d["has_data"]}
             for d in actual["monthly_devices"] if d["utility"] == "heat"
         ]
+        # No tariff or future month means unknown costs, not a zero bill.
+        # Fixed fees do not need readings; variable costs do.
+        tariff = actual["tariff"]
+        has_tariff = tariff.get("effective_from", "0000-00-00") != "0000-00-00"
+        has_cost_period = has_tariff and bool(actual["as_of"])
+        priced = [u for u in UTILITIES if float(tariff.get(UTILITIES[u]["price"], 0) or 0) > 0]
+        known_usage = any(actual["measured"][u] is not None for u in (priced or UTILITIES))
+        cost_partial = month == today.strftime("%Y-%m") or actual["cost_incomplete"] or any(
+            actual["status"][u] != "complete" for u in priced
+        )
         result.append({
             "month": month,
+            "fixed_cost": sum(actual["fixed_costs"].values()) if has_cost_period else None,
+            "variable_cost": sum(actual["variable_costs"].values()) if has_cost_period and known_usage else None,
+            "cost_partial": cost_partial,
             "electricity_kwh": measured,
             "electricity_status": actual["status"]["electricity"],
             "electricity_covered_days": days_covered,
