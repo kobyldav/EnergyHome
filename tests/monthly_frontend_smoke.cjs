@@ -200,19 +200,20 @@ async function flush() {
   assert.equal($("#mediaValue-electricity").textContent,"100 kWh");
   assert($("#mediaCost-electricity").textContent.includes("205"),"Media card shows known costs");
   assert.equal($("#mediaValue-gas").textContent,"—");
-  assert($("#mediaStat-electricity").innerHTML.includes("Průměr / pokrytý den"),"Focused media shows daily average");
+  assert($("#mediaStat-electricity").innerHTML.includes("Průměr / pokrytý den"),"Media panel shows daily average");
   assert($("#mediaChart-electricity").innerHTML.includes("2026-10-05"),"Every covered day has a tooltip");
-  const selectGas=listeners.find(x=>x.name==="#mediaSelect-gas"&&x.type==="click");
-  selectGas.callback();
-  assert.equal($("#mediaDetailTitle").textContent,"Plyn");
-  assert.equal($("#mediaSelect-gas").getAttribute("aria-pressed"),"true");
-  assert.equal($("#mediaSelect-electricity").getAttribute("aria-pressed"),"false");
-  listeners.find(x=>x.name==="#mediaSelect-electricity"&&x.type==="click").callback();
+  for(const u of utilities){
+    assert(html.includes('id="mediaPanel-'+u+'" class="media-detail-panel"'),"Every media panel is visible");
+    assert(!html.includes('id="mediaSelect-'+u+'"'),"No hidden-tab selectors");
+  }
+  assert(!$("#mediaChart-gas").innerHTML.includes("svg-grid-line"),"Empty media remains blank");
   listeners.find(x=>x.name==="#mediaModeDaily"&&x.type==="click").callback();
   assert($("#mediaChart-electricity").innerHTML.includes("kWh / den"),"Daily mode uses daily units");
   assert(!$("#mediaChart-electricity").innerHTML.includes("svg-media-line"),"Daily mode draws bars");
+  assert.equal($("#mediaModeDaily").getAttribute("aria-pressed"),"true");
   listeners.find(x=>x.name==="#mediaModeCumulative"&&x.type==="click").callback();
   assert($("#mediaChart-electricity").innerHTML.includes("svg-media-line"),"Cumulative mode restores line");
+  assert.equal($("#mediaModeCumulative").getAttribute("aria-pressed"),"true");
 
   const handler=listeners.find(x=>x.name==="#dashboardMonthPicker"&&x.type==="change");
   assert(handler,"Period control must update dashboard");

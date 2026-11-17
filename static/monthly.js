@@ -2,7 +2,6 @@
    Included after app.js so legacy pages/forms stay compatible. */
 (() => {
   let displayed = null;
-  let selectedMedia = 'electricity';
   let mediaMode = 'cumulative';
   let history = null;
   let stateIdentity = null;
@@ -157,30 +156,28 @@
     const measured=v.measured?.[u]!=null&&v.status?.[u]!=='missing';
     const tariffKnown=Boolean(v.tariff?.effective_from&&v.tariff.effective_from!=='0000-00-00');
     const unpriced=u==='heat'&&v.cost_incomplete;
-    const fixedKnown=fixed!==0||(tariffKnown&&Number(v.tariff?.[mediaFixedKeys[u]]||0)!==0);
+    const fixedKnown=fixed!==0||(tariffKnown&&measured)||(tariffKnown&&Number(v.tariff?.[mediaFixedKeys[u]]||0)!==0);
     const variableKnown=!unpriced&&measured&&(variable!==0||(tariffKnown&&Number(v.tariff?.[mediaPriceKeys[u]]||0)>0));
     const known=fixedKnown||variableKnown;
-    const partial=unpriced||(known&&Number(v.tariff?.[mediaPriceKeys[u]]||0)>0&&v.status?.[u]!=='complete'&&v.status?.[u]!=='to_date');
+    const partial=unpriced||(known&&Number(v.tariff?.[mediaPriceKeys[u]]||0)>0&&v.status?.[u]!=='complete'&&v.status?.[u]!=='to_date')||(fixedKnown&&measured&&!variableKnown&&Number(v.measured?.[u])>0);
     return {fixed,variable,fixedKnown,variableKnown,known,partial,total:fixed+variable};
   }
   function mediaStatus(u,v){
     if(u==='heat'&&v.coverage?.heat?.some(entry=>entry.assumed_zero)&&v.status?.heat==='complete')return 'Včetně vypnutých radiátorů';
     return ({complete:'Úplné odečty',to_date:'Průběžné odečty',partial:'Částečné odečty',missing:'Bez odečtů'})[v.status?.[u]]||'Bez odečtů';
   }
-  function updateMediaSelection(){
-    for(const u of utilities){
-      const active=u===selectedMedia,btn=$('#mediaSelect-'+u),panel=$('#mediaPanel-'+u);
-      btn?.classList.toggle('active',active);
-      btn?.setAttribute('aria-pressed',String(active));
-      panel?.classList.toggle('hidden',!active);
-    }
-    $('#mediaDetailTitle').textContent=utilityLabel[selectedMedia];
-    $('#mediaDetailStatus').textContent=displayed?mediaStatus(selectedMedia,displayed):'';
+  function updateMediaMode(){
     for(const [id,mode] of [['mediaModeCumulative','cumulative'],['mediaModeDaily','daily']]){
       const btn=$('#'+id),active=mediaMode===mode;
       btn?.classList.toggle('active',active);
       btn?.setAttribute('aria-pressed',String(active));
     }
+  }
+  function mediaDays(v){
+    return (v.days||[]).filter(d=>d.date<=currentLocalIsoDate()&&(!v.as_of||d.date<=v.as_of));
+  }
+  function mediaLastDay(v){
+    return mediaDays(v).reduce((last,d)=>utilities.some(u=>d.has_allocation?.[u])?Math.max(last,d.day):last,0);
   }
   function renderMediaDetail(v){
     $('#mediaDetailMonth').textContent=monthName(v.month);
@@ -191,31 +188,25 @@
       $('#mediaStatus-'+u).textContent=mediaStatus(u,v);
       drawActualReadingChart(u,v);
     }
-    updateMediaSelection();
-  }
-  function chooseMedia(u){
-    if(!utilities.includes(u))return;
-    selectedMedia=u;updateMediaSelection();
+    updateMediaMode();
   }
   function chooseMediaMode(mode){
-    mediaMode=mode;updateMediaSelection();
+    mediaMode=mode;updateMediaMode();
     if(displayed)for(const u of utilities)drawActualReadingChart(u,displayed);
   }
   // Daily allocations and cumulative totals use the same observed intervals.
   function drawActualReadingChart(utility,v){
     const svg=$('#mediaChart-'+utility),stat=$('#mediaStat-'+utility);
     if(!svg||!stat)return;
-    const days=(v.days||[]).filter(d=>d.date<=currentLocalIsoDate()&&(!v.as_of||d.date<=v.as_of));
+    const days=mediaDays(v);
     const observed=days.filter(d=>Boolean(d.has_allocation?.[utility]));
-    const meta=utilitySvgMeta[utility],unit=mediaUnit(utility,v),W=760,H=240,left=72,right=26,top=25,bottom=38;
+    const meta=utilitySvgMeta[utility],unit=mediaUnit(utility,v),W=520,H=190,left=58,right=17,top=22,bottom=28;
     const total=observed.reduce((sum,d)=>sum+Number(d.measured?.[utility]||0),0);
     const count=days.reduce((sum,d)=>sum+Number(d.readings?.[utility]||0),0);
     const cost=mediaCostInfo(utility,v);
     const safe=svgSafe;
     const metrics=[
-      ['Spotřeba',observed.length?nf.format(total)+' '+unit:'—'],
       ['Průměr / pokrytý den',observed.length?nf.format(total/observed.length)+' '+unit:'—'],
-      ['Náklady',cost.known?money(cost.total)+(cost.partial?'*':''):'—'],
       ['Fixní / proměnlivé',(cost.fixedKnown?money(cost.fixed):'—')+' / '+(cost.variableKnown?money(cost.variable):'—')],
       ['Pokryté dny / odečty',observed.length?observed.length+' / '+days.length+' · '+count:'— / '+count]
     ];
@@ -224,16 +215,18 @@
       svgChartEmpty('#mediaChart-'+utility,'Zatím nejsou dostupné odečty.',W,H);
       return;
     }
-    const first=observed[0].day,last=observed[observed.length-1].day;
+    // All media use the same calendar domain for direct comparison. Never extend past observed data.
+    const first=1,last=Math.max(1,mediaLastDay(v));
     const daily=mediaMode==='daily';
     const plotW=W-left-right,plotH=H-top-bottom,base=H-bottom;
     const values=observed.map(d=>Number(d.measured?.[utility]||0));
-    const scaleMax=Math.max(.001,daily?Math.max(...values):total)*1.12;
+    const highest=daily?Math.max(...values):total;
+    const scaleMax=highest>0?highest*1.12:1;
     const dayWidth=plotW/Math.max(1,last-first+1);
     const x=day=>left+(day-first+.5)*dayWidth;
     const y=value=>base-value/scaleMax*plotH;
     let grid='',labels='',path='',markers='',bars='',fills='',hits='',cumulative=0,lastCovered=null,segment=[];
-    const axisFmt=new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:2});
+    const axisFmt=new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:scaleMax<.1?4:scaleMax<10?2:1});
     for(let i=0;i<=4;i++){
       const val=scaleMax*(1-i/4),gy=top+plotH*i/4;
       grid+='<line class="svg-grid-line" x1="'+left+'" x2="'+(W-right)+'" y1="'+gy+'" y2="'+gy+'"></line>'+
@@ -265,7 +258,7 @@
       hits+='<rect x="'+(xx-dayWidth/2)+'" y="'+top+'" width="'+dayWidth+'" height="'+plotH+'" fill="transparent" pointer-events="all"><title>'+safe(title)+'</title></rect>';
     }
     closeArea();
-    const step=Math.max(1,Math.ceil((last-first+1)/9));
+    const step=Math.max(1,Math.ceil((last-first+1)/7));
     for(let day=first;day<=last;day++){
       if(day!==first&&day!==last&&(day-first)%step!==0)continue;
       labels+='<text class="svg-axis-text" x="'+x(day)+'" y="'+(H-12)+'" text-anchor="middle">'+day+'</text>';
@@ -316,14 +309,14 @@
       $('#kpiCost').textContent='—';
       drawFinancialPosition(null);
       for(const u of utilities) {
-        svgChartEmpty('#mediaChart-'+u,'Načítám skutečné odečty…',760,240);
+        svgChartEmpty('#mediaChart-'+u,'Načítám skutečné odečty…',520,190);
         $('#mediaStat-'+u).textContent='';
         $('#mediaValue-'+u).textContent='—';
         $('#mediaCost-'+u).textContent='—';
         $('#mediaStatus-'+u).textContent='Načítám…';
       }
       $('#mediaDetailMonth').textContent=monthName(picker.value);
-      updateMediaSelection();
+      updateMediaMode();
       const other=['costChart','usageChart','applianceChart','cashflowChart','balanceTrendChart',
         'heatingTrendChart','expenseTreeChart','waterfallChart','costSankey'];
       for(const id of other)svgChartEmpty('#'+id,'Načítám data za měsíc…',id==='expenseTreeChart'||id==='waterfallChart'||id==='costSankey'?960:760,id==='expenseTreeChart'?320:280);
@@ -332,7 +325,6 @@
     }
     monthOverview(displayed);
   };
-  for(const u of utilities)$('#mediaSelect-'+u)?.addEventListener('click',()=>chooseMedia(u));
   $('#mediaModeCumulative')?.addEventListener('click',()=>chooseMediaMode('cumulative'));
   $('#mediaModeDaily')?.addEventListener('click',()=>chooseMediaMode('daily'));
   $('#financeChartMode')?.addEventListener('change',()=>{if(history)window.EnergyInsights?.renderFinancial(history);});
