@@ -571,8 +571,8 @@ function drawWaterfall(b,months=[]){
   const period=periodStart===endMonth?monthLabel(periodStart):monthLabel(periodStart)+' – '+monthLabel(endMonth);
   const asOf=b.as_of||'';
   const ongoing=Boolean(asOf&&asOf<periodEnd)||endMonth>=currentLocalIsoDate().slice(0,7);
-  const resultLabel=incomplete?'Neúplný rozdíl':ongoing?'Průběžný rozdíl':balance>0?'Přebytek záloh':balance<0?'Náklady nad zálohami':'Vyrovnané zálohy';
-  const resultColor=incomplete?'#8b6b35':balance<0?'#b84c4c':'#176f64';
+  const resultLabel=balance<0?'Náklady nad zálohami':incomplete||ongoing?'Zbývá ze záloh':balance>0?'Úspora vůči zálohám':'Vyrovnané zálohy';
+  const resultColor=balance<0?'#b84c4c':incomplete?'#8b6b35':'#176f64';
   const steps=[{key:'advance',label:'Zálohy',lines:['Zálohy'],value:paid,from:0,to:paid,color:'#658c99'}];
   let running=paid;
   for(const r of utilities){
@@ -587,7 +587,8 @@ function drawWaterfall(b,months=[]){
       from:running,to:running-remainder,color:'#78858e'});
     running-=remainder;
   }
-  steps.push({key:'balance',label:resultLabel,lines:['Rozdíl','záloh'],value:balance,from:0,to:balance,color:resultColor});
+  const resultLines=balance<0?['Nad','zálohami']:incomplete||ongoing?['Zbývá','ze záloh']:balance>0?['Úspora','vůči zálohám']:['Vyrovnáno'];
+  steps.push({key:'balance',label:resultLabel,lines:resultLines,value:balance,from:0,to:balance,color:resultColor});
   if(!months.length&&paid===0&&cost===0)return svgChartEmpty('#waterfallChart','Zatím nejsou doložené finanční údaje.',W,H);
   const values=steps.flatMap(r=>[r.from,r.to]);
   const low=Math.min(0,...values),high=Math.max(0,...values);
@@ -630,7 +631,7 @@ function drawWaterfall(b,months=[]){
       <text class="waterfall-step-value" x="${xx}" y="${H-8}" text-anchor="middle" fill="${isTotal?r.color:'#46545d'}">${svgSafe(display)}</text>`;
   });
   svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>
-    <text class="waterfall-period" x="18" y="15">${svgSafe(period)}${incomplete?' · * neúplné údaje':ongoing?' · průběžné hodnoty':''}</text>
+    <text class="waterfall-period" x="18" y="15">${svgSafe(period)}${incomplete?' · * neúplné náklady':ongoing?' · průběžné hodnoty':''}</text>
     ${summary}${g.grid}<line class="svg-zero-line" x1="${g.left}" x2="${W-g.right}" y1="${g.y(0)}" y2="${g.y(0)}"></line>
     ${connectors}${bars}${labels}`;
 }

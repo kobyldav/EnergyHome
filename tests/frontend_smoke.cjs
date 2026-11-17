@@ -185,11 +185,13 @@ assert(waterfall.includes("svg-zero-line")&&!waterfall.includes("NaN"),"Deficit 
 assert(!waterfall.includes('data-waterfall-step="other"'),"No invented cost categories");
 sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",paid:2000,actual_cost:1600},wfMonths);
 waterfall=elements.get("#waterfallChart").innerHTML;
-assert(waterfall.includes("Přebytek záloh")&&waterfall.includes("+"+sandbox.money(400)),"Positive result");
+assert(waterfall.includes("Úspora vůči zálohám")&&waterfall.includes("+"+sandbox.money(400)),"Positive result");
 sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",paid:2000,actual_cost:1600,cost_incomplete:true},
   [{...wfMonths[0],cost_incomplete:true}]);
 waterfall=elements.get("#waterfallChart").innerHTML;
-assert(waterfall.includes("Neúplný rozdíl")&&!waterfall.includes("Přebytek záloh"),"Unpriced heat never looks like final surplus");
+assert(waterfall.includes("Zbývá ze záloh")&&waterfall.includes("neúplné náklady")&&!waterfall.includes("Úspora vůči zálohám"),"Unpriced heat never looks like final savings");
+sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",as_of:"2025-10-15",paid:2000,actual_cost:1600},wfMonths);
+assert(elements.get("#waterfallChart").innerHTML.includes("Zbývá ze záloh"),"Ongoing balance is provisional");
 sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",paid:0,actual_cost:50},[]);
 assert(elements.get("#waterfallChart").innerHTML.includes('data-waterfall-step="other"'),"Missing legacy breakdown reconciles to total");
 

@@ -227,7 +227,7 @@ async function flush() {
   assert.equal($("#mediaDetailMonth").textContent,"Září 2026");
   assert($("#expenseTreeChart").innerHTML.includes("26/09"),"Expense structure follows month changes");
   assert.equal($("#currentBalance").textContent,"Neúplné","Missing heat rate must not show complete balance");
-  assert($("#waterfallChart").innerHTML.includes("Neúplný rozdíl"),"Settlement distinguishes incomplete cost data");
+  assert($("#waterfallChart").innerHTML.includes("Zbývá ze záloh")&&$("#waterfallChart").innerHTML.includes("neúplné náklady"),"Settlement distinguishes incomplete cost data");
   assert($("#waterfallChart").innerHTML.includes("26/09"),"Settlement changes month");
   assert(!$("#actualCost").textContent.includes("orientační náklady"),"Removed heat detail must not reappear");
   assert(calls>=5,"Month, history and application data should be requested");
