@@ -38,6 +38,7 @@ jobs:
       - name: Run backend and synchronization tests
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m unittest discover -s tests -v
           node --check static/app.js
           node --check static/insights.js
@@ -104,3 +105,52 @@ jobs:
             release/EnergyHome-*-Setup.exe.sha256.txt
           if-no-files-found: error
           retention-days: 14
+
+  publish-release:
+    needs: build-windows
+    if: github.repository == 'kobyldav/EnergyHome' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: energyhome-publish-release
+      cancel-in-progress: false
+    steps:
+      - name: Checkout exact tested source
+        uses: actions/checkout@v5
+      - name: Download tested installer
+        uses: actions/download-artifact@v4
+        with:
+          name: EnergyHome-windows-unsigned
+          path: release
+      - name: Publish versioned release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^APP_VERSION = "\([0-9][0-9.]*\)"/\1/p' app.py)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          tag="v$version"
+          setup="EnergyHome-$version-Setup.exe"
+          notes="release-notes/$version.md"
+          # Only explicitly prepared versions may be published.
+          if [[ ! -f "$notes" ]]; then
+            echo "No release notes for $tag; skipping."
+            exit 0
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag already exists; never replace published installers."
+            exit 0
+          fi
+          # A pre-existing tag must identify exactly the tested commit.
+          if tag_sha="$(git ls-remote origin "refs/tags/$tag^{}" "refs/tags/$tag" | awk 'NR==1{print $1}')" && [[ -n "$tag_sha" ]]; then
+            [[ "$tag_sha" == "$GITHUB_SHA" ]] || { echo "Tag points to another commit"; exit 1; }
+          fi
+          grep -Fq "#define MyAppVersion \"$version\"" installer.iss
+          test -f "release/$setup"
+          test -f "release/$setup.sha256.txt"
+          (cd release && sha256sum --check "$setup.sha256.txt")
+          gh release create "$tag" "release/$setup" "release/$setup.sha256.txt" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Energy Home $version" --notes-file "$notes"

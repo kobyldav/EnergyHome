@@ -263,6 +263,70 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(self.cloud.data["settings"]["household_name"], "Místní")
         self.assertEqual(self.cloud.data["settings"]["currency"], "EUR")
 
+    def test_two_independent_devices_sync_offline_edits_deletions_and_conflicts(self):
+        # Distinct Windows installations are represented by independent
+        # storage directories and independent baselines; only the cloud is shared.
+        from energy_app.github_sync import SyncError
+        a = self.sync
+        with tempfile.TemporaryDirectory() as second:
+            folder = Path(second)
+            bstore = JsonStore(folder / "energy_data.json")
+            b = GitHubSync(bstore, folder)
+            b.config_file.write_text(json.dumps({"repo":"example/private","secret":"other-token"}))
+            bstore.enable_sync_history()
+            with patch.object(b, "_client", return_value=self.cloud):
+                original = self.store.load()
+                original["meters"] = [{"id":"m1","name":"Shared","utility":"electricity"}]
+                self.store.save(original)
+                self.assertTrue(a.sync()["ok"])
+                self.assertTrue(b.sync()["ok"])
+                self.assertEqual(bstore.load(), self.store.load())
+
+                # Both computers edit offline before either uploads.
+                for store, day, value in [(self.store,"2026-11-10",10),(bstore,"2026-11-11",11)]:
+                    d = store.load()
+                    d["meter_readings"].append({"id":day,"meter_id":"m1","date":day,"value":value})
+                    store.save(d)
+                with patch.object(self.cloud, "read", side_effect=SyncError("offline")):
+                    with self.assertRaises(SyncError):
+                        b.sync()
+                self.assertEqual(len(bstore.load()["meter_readings"]),1)
+                self.assertTrue(a.sync()["ok"])
+                self.assertTrue(b.sync()["ok"])
+                self.assertTrue(a.sync()["ok"])
+                self.assertEqual(self.store.load(), bstore.load())
+                self.assertEqual(len(bstore.load()["meter_readings"]),2)
+
+                # A deletion propagates without resurrection.
+                d = bstore.load()
+                d["meter_readings"] = d["meter_readings"][:1]
+                bstore.save(d)
+                self.assertTrue(b.sync()["ok"])
+                self.assertTrue(a.sync()["ok"])
+                self.assertEqual(self.store.load(), bstore.load())
+                self.assertEqual(len(self.store.load()["meter_readings"]),1)
+
+                # Concurrent edits of the same field require an explicit choice.
+                for store, name in [(self.store,"A"),(bstore,"B")]:
+                    d=store.load()
+                    d["meters"][0]["name"]=name
+                    store.save(d)
+                self.assertTrue(a.sync()["ok"])
+                self.assertFalse(b.sync()["ok"])
+                self.assertEqual(bstore.load()["meters"][0]["name"],"B")
+                self.assertTrue(b.sync("remote")["ok"])
+                self.assertEqual(self.store.load(), bstore.load())
+                self.assertEqual(a.status()["data_revision"],b.status()["data_revision"])
+
+    def test_sync_refuses_public_repo_without_read_or_write(self):
+        from energy_app.github_sync import SyncError
+        with patch.object(self.cloud,"check_private",side_effect=SyncError("public")), \
+             patch.object(self.cloud,"read") as read, patch.object(self.cloud,"write") as write:
+            with self.assertRaises(SyncError):
+                self.sync.sync()
+            read.assert_not_called()
+            write.assert_not_called()
+
     def test_deleting_last_record_stays_deleted(self):
         current = self.store.load()
         current["meters"].append({"id": "m1", "name": "Temporary"})

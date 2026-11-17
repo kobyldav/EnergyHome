@@ -388,18 +388,18 @@
           <strong>Nastavení ve 3 krocích (bez poplatků)</strong>
           <p>1. <a href="https://github.com/new" target="_blank" rel="noopener noreferrer">Vytvořte NOVÝ soukromý (Private) datový repozitář</a>, například <code>vas-ucet/energyhome-data</code>. Nepoužívejte veřejný repozitář aplikace.</p>
           <p>2. Na druhém GitHub účtu nejprve přijměte <a href="https://github.com/settings/repositories" target="_blank" rel="noopener noreferrer">pozvánku ke spolupráci</a> od vlastníka repozitáře (Settings → Collaborators v datovém repozitáři).</p>
-          <p>3. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Na každém účtu vytvořte vlastní fine-grained token</a> pro TENTO repozitář s oprávněním <strong>Contents: Read and write</strong>. Zadejte jej níže a ověřte spojení. Token při expiraci obnovte.</p><p>Test připojení krátce vytvoří a smaže neškodný testovací soubor v datovém repozitáři. Nikdy při něm neupravuje měření domácnosti.</p>
+          <p>3. Vlastník nebo člen organizace: <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">fine-grained token</a> pouze pro datový repozitář, <strong>Contents: Read and write</strong>. Přizvaný spolupracovník osobního repozitáře: vlastní <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener noreferrer">classic token</a> s oprávněním <strong>repo</strong>. Pozor: classic token má širší přístup. Bezpečnější je společná organizace a dva omezené fine-grained tokeny. Každý použije vlastní token a ověří spojení.</p><p>Test připojení krátce vytvoří a smaže neškodný testovací soubor v datovém repozitáři. Nikdy při něm neupravuje měření domácnosti.</p>
         </div>
         <form id="githubSyncForm" class="form-grid">
           <label class="full">Soukromý datový repozitář
             <input name="repo" type="text" autocomplete="off" placeholder="vlastnik/energyhome-private-data" required>
           </label>
-          <label class="full">Fine-grained GitHub token (Contents: Read and write)
+          <label class="full">GitHub token (fine-grained nebo classic)
             <input name="token" type="password" autocomplete="new-password" spellcheck="false" required>
           </label>
           <button class="btn primary full" type="submit">Připojit GitHub synchronizaci</button>
         </form>
-        <p class="help">Token musí mít přístup jen k datovému repozitáři. Na Windows je uložen šifrovaně pomocí DPAPI. Oba partneři si nastaví přístup zvlášť. GitHub má historii změn, ale pro skutečné zálohy doporučujeme i pravidelný export mimo GitHub.</p>
+        <p class="help">Preferujte token omezený na datový repozitář. Classic token má širší oprávnění; nastavte krátkou platnost. Na Windows je token uložen šifrovaně pomocí DPAPI. Každý partner používá vlastní token. Soukromý repozitář není šifrování dat mezi koncovými zařízeními.</p>
         <div class="sync-panel">
           <div id="githubSyncStatus" aria-live="polite">Načítám stav synchronizace…</div>
           <p id="syncDiagnostics" class="help" role="status"></p>

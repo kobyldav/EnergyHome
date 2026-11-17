@@ -174,9 +174,9 @@ class GitHubContents:
             if error.code in (409, 422) and method == "PUT":
                 raise VersionConflict("GitHub mezitím změnil data.") from None
             messages = {
-                401: "GitHub odmítl token. Vytvořte nový fine-grained token s přístupem k soukromému datovému repozitáři.",
-                403: "GitHub přístup zamítl (403). Zkontrolujte Contents: Read and write, přístup vybraného účtu a případně limit API.",
-                404: "Soukromý repozitář nebyl nalezen (404), nebo k němu účet nemá přístup. Pozvaný spolupracovník musí přijmout pozvánku.",
+                401: "GitHub odmítl token. Obnovte token s přístupem k soukromému datovému repozitáři.",
+                403: "GitHub přístup zamítl (403). Zkontrolujte právo zápisu a typ tokenu. Přizvaný spolupracovník osobního repozitáře potřebuje classic token (repo); fine-grained funguje pro vlastníka nebo člena organizace.",
+                404: "Soukromý repozitář nebyl nalezen (404), nebo k němu účet nemá přístup. Přijměte pozvánku; u přizvaného spolupracovníka osobního repozitáře použijte classic token (repo).",
                 413: "Soubor je pro GitHub příliš velký.",
             }
             raise SyncError(messages.get(error.code, "GitHub API: HTTP " + str(error.code) + ".")) from None
