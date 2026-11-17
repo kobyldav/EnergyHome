@@ -162,6 +162,9 @@ async function flush() {
   assert($("#actualCost").textContent.includes("205"),"Confirmed costs should be visible");
   assert($("#expenseTreeChart").innerHTML.includes("26/10"),"Expense structure follows the selected month");
   assert($("#expenseTreeChart").innerHTML.includes("Elektřina · Fixní"),"Expense structure uses actual cost components");
+  assert($("#waterfallChart").innerHTML.includes("26/10"),"Settlement uses selected month");
+  assert($("#waterfallChart").innerHTML.includes('data-waterfall-step="electricity"'),"Settlement uses utility breakdown");
+  assert($("#waterfallChart").innerHTML.includes("+"+context.money(45)),"Settlement reconciles actual costs and advances");
   assert($("#billingPeriod").textContent.includes("2026"),"Financial card shares month");
   assert($("#usageChart").innerHTML.includes(" L "),"Daily electricity chart must use connected lines");
   assert($("#usageChart").innerHTML.includes("stroke-dasharray"),"Appliance model lines must be visibly distinct");
@@ -224,6 +227,8 @@ async function flush() {
   assert.equal($("#mediaDetailMonth").textContent,"Září 2026");
   assert($("#expenseTreeChart").innerHTML.includes("26/09"),"Expense structure follows month changes");
   assert.equal($("#currentBalance").textContent,"Neúplné","Missing heat rate must not show complete balance");
+  assert($("#waterfallChart").innerHTML.includes("Neúplný rozdíl"),"Settlement distinguishes incomplete cost data");
+  assert($("#waterfallChart").innerHTML.includes("26/09"),"Settlement changes month");
   assert(!$("#actualCost").textContent.includes("orientační náklady"),"Removed heat detail must not reappear");
   assert(calls>=5,"Month, history and application data should be requested");
   $("#applianceFocus").value="fridge";

@@ -172,6 +172,27 @@ sandbox.drawExpenseTreeChart([{month:"2026-11",fixed_costs:{heat:20},variable_co
   measured:{heat:12},status:{heat:"partial"},cost_incomplete:true}],{start:"2026-11",end:"2026-11"});
 assert(elements.get("#expenseTreeChart").innerHTML.includes("neúplné"),"Unpriced heat is identified as incomplete");
 
+// The settlement waterfall reconciles all categories and crosses zero.
+const wfMonths=[{month:"2026-10",utility_costs:{electricity:800,cold_water:100,hot_water:200,gas:0,heat:500},
+  fixed_costs:{electricity:100,heat:100},variable_costs:{electricity:700,cold_water:100,hot_water:200,heat:400}}];
+sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",paid:1000,actual_cost:1600},wfMonths);
+let waterfall=elements.get("#waterfallChart").innerHTML;
+for(const key of ["advance","electricity","cold_water","hot_water","gas","heat","balance"])
+  assert(waterfall.includes('data-waterfall-step="'+key+'"'),"Waterfall shows "+key);
+assert(waterfall.includes("Náklady nad zálohami"),"Negative balance is identified");
+assert(waterfall.includes(sandbox.money(-600)),"Deficit value is exact");
+assert(waterfall.includes("svg-zero-line")&&!waterfall.includes("NaN"),"Deficit uses valid axis");
+assert(!waterfall.includes('data-waterfall-step="other"'),"No invented cost categories");
+sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",paid:2000,actual_cost:1600},wfMonths);
+waterfall=elements.get("#waterfallChart").innerHTML;
+assert(waterfall.includes("Přebytek záloh")&&waterfall.includes("+"+sandbox.money(400)),"Positive result");
+sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",paid:2000,actual_cost:1600,cost_incomplete:true},
+  [{...wfMonths[0],cost_incomplete:true}]);
+waterfall=elements.get("#waterfallChart").innerHTML;
+assert(waterfall.includes("Neúplný rozdíl")&&!waterfall.includes("Přebytek záloh"),"Unpriced heat never looks like final surplus");
+sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",paid:0,actual_cost:50},[]);
+assert(elements.get("#waterfallChart").innerHTML.includes('data-waterfall-step="other"'),"Missing legacy breakdown reconciles to total");
+
 setImmediate(() => {
   try {
     assert(fetchCalls.includes("/api/state"), "Application did not begin loading persisted data");

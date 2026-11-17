@@ -112,7 +112,7 @@ function renderDashboard(){
   drawBalanceTrendChart(d.months||[]);
   drawHeatingTrendChart(d.months||[]);
   drawExpenseTreeChart(d.months||[],b);
-  drawWaterfall(b);
+  drawWaterfall(b,(d.months||[]).filter(m=>m.month>=b?.start&&m.month<=b?.end));
   renderSvgAnalytics(d.months||[],b);
 }
 
@@ -548,25 +548,91 @@ function drawExpenseTreeChart(months,billing){
   }).join('');
   svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${header}${blocks}`;
 }
-function drawWaterfall(b){
-  const svg=$('#waterfallChart'),W=960,H=260;
+function drawWaterfall(b,months=[]){
+  const svg=$('#waterfallChart'),W=960,H=350;
   if(!svg||!b?.start)return svgChartEmpty('#waterfallChart','Zatím není co zobrazit.',W,H);
-  const paid=Number(b.paid||0),cost=Number(b.actual_cost||0),balance=Number(b.current_balance||0),min=Math.min(0,balance),max=Math.max(1,paid,balance),pad=Math.max(100,(max-min)*.08);
-  const g=svgYAxis(W,H,min-pad,max+pad,96,26,28,46,v=>`${Math.round(v).toLocaleString('cs-CZ')} Kč`);
-  const centers=[220,480,740],bw=120,zeroY=g.y(0),paidY=g.y(paid),balanceY=g.y(balance),costTop=Math.min(paidY,balanceY),costH=Math.abs(balanceY-paidY),finalTop=Math.min(zeroY,balanceY),finalH=Math.abs(balanceY-zeroY);
-  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${g.grid}
-    <line class="svg-zero-line" x1="${g.left}" y1="${zeroY}" x2="${W-g.right}" y2="${zeroY}"></line>
-    <rect x="${centers[0]-bw/2}" y="${paidY}" width="${bw}" height="${zeroY-paidY}" class="svg-waterfall-positive"><title>Zálohy · ${svgSafe(money(paid))}</title></rect>
-    <line class="svg-waterfall-connector" x1="${centers[0]+bw/2}" y1="${paidY}" x2="${centers[1]-bw/2}" y2="${paidY}"></line>
-    <rect x="${centers[1]-bw/2}" y="${costTop}" width="${bw}" height="${costH}" class="svg-waterfall-negative"><title>Náklady · ${svgSafe(money(cost))}</title></rect>
-    <line class="svg-waterfall-connector" x1="${centers[1]+bw/2}" y1="${balanceY}" x2="${centers[2]-bw/2}" y2="${balanceY}"></line>
-    <rect x="${centers[2]-bw/2}" y="${finalTop}" width="${bw}" height="${finalH}" class="${balance>=0?'svg-waterfall-positive':'svg-waterfall-negative'}"><title>Zůstatek · ${svgSafe(money(balance))}</title></rect>
-    <text class="svg-category-label" x="${centers[0]}" y="${H-16}" text-anchor="middle">Zálohy</text>
-    <text class="svg-category-label" x="${centers[1]}" y="${H-16}" text-anchor="middle">Náklady</text>
-    <text class="svg-category-label" x="${centers[2]}" y="${H-16}" text-anchor="middle">Zůstatek</text>
-    <text class="svg-value-label svg-value-center" x="${centers[0]}" y="${Math.max(18,paidY-11)}" text-anchor="middle">${svgSafe(money(paid))}</text>
-    <text class="svg-value-label svg-value-center" x="${centers[1]}" y="${Math.max(18,costTop-11)}" text-anchor="middle">−${svgSafe(money(cost))}</text>
-    <text class="svg-value-label svg-value-center" x="${centers[2]}" y="${Math.max(18,finalTop-11)}" text-anchor="middle">${svgSafe(money(balance))}</text>`;
+  const paid=Number(b.paid||0),cost=Number(b.actual_cost||0),balance=paid-cost;
+  const rateKeys={electricity:'electricity_per_kwh',cold_water:'cold_water_per_m3',
+    hot_water:'hot_water_per_m3',gas:'gas_per_m3',heat:'heat_per_gj'};
+  const utilities=Object.keys(utilitySvgMeta).map(key=>{
+    const value=months.reduce((sum,m)=>sum+Number(m.utility_costs?.[key]||0),0);
+    const fixed=months.reduce((sum,m)=>sum+Number(m.fixed_costs?.[key]||0),0);
+    const variable=months.reduce((sum,m)=>sum+Number(m.variable_costs?.[key]||0),0);
+    const partial=months.some(m=>(key==='heat'&&m.cost_incomplete)||
+      (Number(m.tariff?.[rateKeys[key]]||0)>0&&m.status&&
+        !['complete','to_date'].includes(m.status[key]))||
+      (m.measured?.[key]>0&&m.tariff?.effective_from==='0000-00-00'));
+    return {key,label:utilityLabel[key],value,fixed,variable,color:utilitySvgMeta[key].color,partial};
+  });
+  const incomplete=utilities.some(r=>r.partial)||Boolean(b.cost_incomplete);
+  const remainder=cost-utilities.reduce((sum,r)=>sum+r.value,0);
+  const periodEnd=b.end||b.start;
+  const periodStart=String(b.start).slice(0,7),endMonth=String(periodEnd).slice(0,7);
+  const period=periodStart===endMonth?monthLabel(periodStart):monthLabel(periodStart)+' – '+monthLabel(endMonth);
+  const asOf=b.as_of||'';
+  const ongoing=Boolean(asOf&&asOf<periodEnd)||endMonth>=currentLocalIsoDate().slice(0,7);
+  const resultLabel=incomplete?'Neúplný rozdíl':ongoing?'Průběžný rozdíl':balance>0?'Přebytek záloh':balance<0?'Náklady nad zálohami':'Vyrovnané zálohy';
+  const resultColor=incomplete?'#8b6b35':balance<0?'#b84c4c':'#176f64';
+  const steps=[{key:'advance',label:'Zálohy',lines:['Zálohy'],value:paid,from:0,to:paid,color:'#658c99'}];
+  let running=paid;
+  for(const r of utilities){
+    const from=running;running-=r.value;
+    const lines=r.key==='cold_water'?['Studená','voda']:r.key==='hot_water'?['Teplá','voda']:[r.label];
+    steps.push({...r,lines,from,to:running});
+  }
+  // Reconcile against the authoritative total even if a legacy response
+  // lacks per-utility breakdown or includes another cost category.
+  if(Math.abs(remainder)>1e-7){
+    steps.push({key:'other',label:'Ostatní náklady',lines:['Ostatní','náklady'],value:remainder,
+      from:running,to:running-remainder,color:'#78858e'});
+    running-=remainder;
+  }
+  steps.push({key:'balance',label:resultLabel,lines:['Rozdíl','záloh'],value:balance,from:0,to:balance,color:resultColor});
+  if(!months.length&&paid===0&&cost===0)return svgChartEmpty('#waterfallChart','Zatím nejsou doložené finanční údaje.',W,H);
+  const values=steps.flatMap(r=>[r.from,r.to]);
+  const low=Math.min(0,...values),high=Math.max(0,...values);
+  const pad=Math.max(1,(high-low)*.12);
+  const g=svgYAxis(W,H,low<0?low-pad:0,Math.max(pad,high+pad),92,24,106,63,
+    v=>Math.round(v).toLocaleString('cs-CZ')+' Kč');
+  const slot=g.plotW/steps.length,bw=Math.min(78,slot*.62),x=i=>g.left+slot*(i+.5);
+  const fmt=v=>svgSafe(money(v));
+  const signed=v=>v>0?'+'+money(v):money(v);
+  const summary=[
+    {label:'Předepsané zálohy',value:money(paid),color:'#415f6b'},
+    {label:incomplete?'Známé náklady':'Náklady celkem',value:money(cost),color:'#34434d'},
+    {label:resultLabel,value:signed(balance),color:resultColor}
+  ].map((r,i)=>{
+    const xx=18+i*312;
+    return `<rect x="${xx}" y="23" width="300" height="62" rx="4" fill="#f5f8f8"></rect>
+      <text class="waterfall-summary-label" x="${xx+12}" y="42">${svgSafe(r.label)}</text>
+      <text class="waterfall-summary-value" x="${xx+12}" y="69" fill="${r.color}">${svgSafe(r.value)}</text>`;
+  }).join('');
+  let connectors='',bars='',labels='';
+  steps.forEach((r,i)=>{
+    const xx=x(i),top=Math.min(g.y(r.from),g.y(r.to)),height=Math.abs(g.y(r.from)-g.y(r.to));
+    const isTotal=r.key==='advance'||r.key==='balance';
+    const display=r.key==='advance'?money(r.value):r.key==='balance'?signed(r.value):
+      r.partial&&r.value===0?'—':signed(-r.value)+(r.partial?' *':'');
+    const tip=isTotal?r.label+' · '+money(r.value):
+      r.label+' · '+(r.partial?'Známé náklady ':'Náklady ')+money(r.value)+
+      (r.fixed!=null?' · Fixní '+money(r.fixed)+' · Proměnlivé '+money(r.variable):'')+
+      ' · Zbývá '+money(r.to)+(r.partial?' · Neúplné údaje':'');
+    if(i<steps.length-1){
+      const yy=g.y(r.to);
+      connectors+=`<line class="svg-waterfall-connector" x1="${xx+bw/2}" x2="${x(i+1)-bw/2}" y1="${yy}" y2="${yy}"></line>`;
+    }
+    bars+=`<g data-waterfall-step="${r.key}"><title>${svgSafe(tip)}</title>
+      ${height>0?`<rect x="${xx-bw/2}" y="${top}" width="${bw}" height="${height}" rx="2" fill="${r.color}" opacity="${isTotal?1:.86}"></rect>`:
+      `<line x1="${xx-bw/2}" x2="${xx+bw/2}" y1="${top}" y2="${top}" stroke="${r.partial?'#b28a46':'#aeb9bf'}" stroke-width="3" ${r.partial?'stroke-dasharray="3 3"':''}></line>`}
+      <rect x="${xx-slot/2}" y="${g.top}" width="${slot}" height="${g.plotH}" fill="transparent" pointer-events="all"></rect>
+    </g>`;
+    labels+=`<text class="svg-category-label" x="${xx}" y="${H-44}" text-anchor="middle">${r.lines.map((line,j)=>`<tspan x="${xx}" dy="${j===0?0:13}">${svgSafe(line)}</tspan>`).join('')}</text>
+      <text class="waterfall-step-value" x="${xx}" y="${H-8}" text-anchor="middle" fill="${isTotal?r.color:'#46545d'}">${svgSafe(display)}</text>`;
+  });
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>
+    <text class="waterfall-period" x="18" y="15">${svgSafe(period)}${incomplete?' · * neúplné údaje':ongoing?' · průběžné hodnoty':''}</text>
+    ${summary}${g.grid}<line class="svg-zero-line" x1="${g.left}" x2="${W-g.right}" y1="${g.y(0)}" y2="${g.y(0)}"></line>
+    ${connectors}${bars}${labels}`;
 }
 
 function selectedSvgMonths(months,billing){

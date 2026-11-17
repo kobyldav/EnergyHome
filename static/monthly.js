@@ -45,7 +45,7 @@
   function monthOverview(v) {
     const b = {
       start:v.start, end:v.end, paid:v.advance, actual_cost:v.total_cost,
-      current_balance:v.balance
+      current_balance:v.balance,as_of:v.as_of,cost_incomplete:v.cost_incomplete
     };
     const displayHeat = v.measured?.heat;
     const m = {
@@ -107,7 +107,7 @@
     // Historical finance lines are rendered by EnergyInsights from neighbor months.
 
     drawExpenseTreeChart([m],{start:v.month,end:v.month});
-    drawWaterfall(b);
+    drawWaterfall(b,[v]);
     renderCostSankey([m]);
     renderMonthHeat(v);
     renderMediaDetail(v);
@@ -319,7 +319,7 @@
       updateMediaMode();
       const other=['costChart','usageChart','applianceChart','cashflowChart','balanceTrendChart',
         'heatingTrendChart','expenseTreeChart','waterfallChart','costSankey'];
-      for(const id of other)svgChartEmpty('#'+id,'Načítám data za měsíc…',id==='expenseTreeChart'||id==='waterfallChart'||id==='costSankey'?960:760,id==='expenseTreeChart'?320:280);
+      for(const id of other)svgChartEmpty('#'+id,'Načítám data za měsíc…',id==='expenseTreeChart'||id==='waterfallChart'||id==='costSankey'?960:760,id==='expenseTreeChart'?320:id==='waterfallChart'?350:280);
       refreshMonth();
       return;
     }
