@@ -94,16 +94,6 @@ window.EnergyInsights = (() => {
       line(other,observed,chart,colors.other,'3 4')+
       dots(rows,measured,observed,chart,colors.measured,'Elektroměr','kWh')+
       labels(rows,chart,9);
-    const note=document.querySelector('#usageChartNote');
-    if(note){
-      const passiveNames=(currentMonth?.appliances||[]).filter(a=>a.kind==='passive').map(a=>a.name);
-      const activeNames=(currentMonth?.appliances||[]).filter(a=>a.kind==='active').map(a=>a.name);
-      const excess=measured.some((v,i)=>observed[i] && passiveRate+activeRate>v+0.001);
-      note.textContent='Plná čára: elektroměr. Trvalé: '+(passiveNames.join(', ')||'žádné zadané')+
-        '. Cyklické: '+(activeNames.join(', ')||'žádné zadané')+
-        '. Přerušované čáry jsou profilové odhady (aktivní cykly rovnoměrně za měsíc), nikoli měření jednotlivých spotřebičů. Bez odečtů se nepředpovídá.'+
-        (excess?' V některých dnech model spotřebičů převyšuje celkový odečet; do měřené spotřeby se nepřičítá.':'');
-    }
   }
 
   function renderElectricHistory(history){
@@ -148,7 +138,6 @@ window.EnergyInsights = (() => {
       }
     }
     const labelsRows=list.map(m=>({label:m.month,short:labelMonth(m.month)}));
-    const overflow=list.some(m=>Number(m.model_excess_kwh||0)>0.001);
     target.innerHTML=a.baseSVG+(selectedProfile?'':areas)+
       (selectedProfile
         ? legend([{label:'Celkem elektroměr',color:colors.measured},
@@ -163,12 +152,6 @@ window.EnergyInsights = (() => {
       dots(labelsRows,measured,valid,a,colors.measured,'Naměřená elektřina','kWh')+
       labelsRows.map((m,i)=>'<text class="svg-axis-text" x="'+a.x(i,list.length)+
         '" y="294" text-anchor="middle">'+svg(m.short)+'</text>').join('');
-    const note=document.querySelector('#applianceChartNote');
-    if(note)note.textContent=(selectedProfile?
-      'Za '+range()+' měsíců · '+selectedProfile.name+' je odhad podle '+(selectedProfile.kind==='passive'?'denního profilu':'zadaných cyklů')+
-      ', zatímco celková elektřina vychází z elektroměru.':
-      'Za '+range()+' měsíců zpět od zvoleného měsíce. Barevné vrstvy jsou modelová spotřeba trvalých a cyklických spotřebičů a dopočtený zbytek. Základ tvoří odečty elektroměru.')+
-      (overflow?' Pozor: v některých měsících model spotřebičů přesahuje naměřenou spotřebu; přebytek není přičten k celku.':'');
   }
 
   function renderHeatHistory(history){
@@ -201,9 +184,6 @@ window.EnergyInsights = (() => {
       line(numeric,valid,a,colors.heat)+dots(months,numeric,valid,a,colors.heat,'Topení','dílků')+
       months.map((m,i)=>'<text class="svg-axis-text" x="'+a.x(i,months.length)+
         '" y="274" text-anchor="middle">'+svg(m.short)+'</text>').join('');
-    const note=document.querySelector('#heatingTrendNote');
-    if(note)note.textContent='Historie rozpočítaných odečtů za '+range()+' měsíců · '+
-      (room==='all'?'všechny radiátory':room)+'. Měsíce bez navazujících odečtů zůstávají prázdné.';
   }
   function appliances(history){
     const select=document.querySelector('#applianceFocus');
@@ -312,10 +292,6 @@ window.EnergyInsights = (() => {
     }];
     balance.innerHTML=plotFinanceLines(list,balanceSeries,760,280,
       Math.min(0,...list.filter(x=>x.available).map(x=>Number(x.balance||0)))).markup;
-    const note=document.querySelector('#cashflowChartNote');
-    if(note)note.textContent='Zálohy jsou předepsané, nikoli potvrzené bankovní platby. Náklady zahrnují fixní poplatky a spotřebu z odečtů. Tečkovaný svislý pruh označuje vybraný měsíc; budoucnost se nepředpovídá.';
-    const balanceNote=document.querySelector('#balanceTrendNote');
-    if(balanceNote)balanceNote.textContent='Každý bod = rozdíl záloh a nákladů za příslušný měsíc (ne kumulativní součet). U probíhajícího měsíce jde pouze o dosud známé hodnoty. Chybějící měsíce nejsou vykresleny jako nula.';
   }
   function renderAll(monthData,history){
     renderDaily(monthData,history);

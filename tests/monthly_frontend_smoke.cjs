@@ -10,6 +10,9 @@ assert(html.includes('/static/monthly.js'), "Month-first code must load after ap
 assert(html.includes('/static/insights.js'), "Insights module must be loaded before monthly charts");
 assert(!html.includes('id="heatCostDetails"'), "Detailed heat pricing paragraph was requested removed");
 assert(!html.includes("Predikce konce období"), "A forecast must not be presented as actual");
+for (const id of ["usageChartNote", "applianceChartNote", "cashflowChartNote", "balanceTrendNote", "heatingTrendNote"]) {
+  assert(!html.includes(`id="${id}"`), `Removed chart note ${id} must not be rendered`);
+}
 
 const elements = new Map();
 const listeners = [];
@@ -154,10 +157,10 @@ async function flush() {
   assert($("#billingPeriod").textContent.includes("2026"),"Financial card shares month");
   assert($("#usageChart").innerHTML.includes(" L "),"Daily electricity chart must use connected lines");
   assert($("#usageChart").innerHTML.includes("stroke-dasharray"),"Appliance model lines must be visibly distinct");
-  assert($("#usageChartNote").textContent.includes("Lednička"),"Daily model should name the fridge");
-  assert($("#usageChartNote").textContent.includes("Pračka"),"Daily model should name the washer");
+  assert($("#usageChart").innerHTML.includes("Trvalé (profil)"),"Daily chart retains passive profile legend");
+  assert($("#usageChart").innerHTML.includes("Cyklické (profil)"),"Daily chart retains active profile legend");
   assert($("#applianceChart").innerHTML.includes("path"),"Twelve-month appliance breakdown must be drawn");
-  assert($("#applianceChartNote").textContent.includes("12 měsíců"),"History chart labels window");
+  assert($("#applianceChart").innerHTML.includes("11/25"),"History chart includes the first of twelve months");
   assert($("#balanceTrendChart").innerHTML.includes("09/26"),"Balance must include September neighbor");
   assert($("#balanceTrendChart").innerHTML.includes("11/26"),"Balance must include November neighbor");
   assert($("#cashflowChart").innerHTML.includes("Elektřina"),"Finance chart has energy legend");
@@ -171,8 +174,8 @@ async function flush() {
   assert(!$("#cashflowChart").innerHTML.includes("Studená voda"),"Total mode hides per-energy traces");
   $("#financeChartMode").value="energy";
   financeSwitch.callback();
-  assert($("#heatingTrendNote").textContent.includes("12 měsíců"),
-    "Heat history panel must show timeframe");
+  assert($("#heatingTrendChart").innerHTML.includes("11/25"),
+    "Heat history chart includes the first of twelve months");
   assert($("#mediaChart-electricity").innerHTML.includes(" L "),"Cumulative interpolated line must connect daily points");
   assert(!$("#mediaChart-electricity").innerHTML.includes(" H "),"Chart must not use staircase H commands");
   assert(!$("#mediaChart-gas").innerHTML.includes("svg-grid-line"),"Missing readings have no axes");
@@ -187,12 +190,18 @@ async function flush() {
   assert(calls>=5,"Month, history and application data should be requested");
   $("#applianceFocus").value="fridge";
   listeners.find(x=>x.name==="#applianceFocus"&&x.type==="change").callback();
-  assert($("#applianceChartNote").textContent.includes("Lednička"),"Individual appliance selection works");
+  assert($("#applianceChart").innerHTML.includes("Lednička (profil)"),"Individual appliance selection works");
+  const roomSwitch=listeners.find(x=>x.name==="#heatRoomFilter"&&x.type==="change");
+  $("#heatRoomFilter").value="Bez odečtů";
+  roomSwitch.callback();
+  assert($("#heatingTrendChart").innerHTML.includes("chybí navazující odečty"),"Room without readings shows empty chart");
   $("#heatRoomFilter").value="Kuchyně";
-  listeners.find(x=>x.name==="#heatRoomFilter"&&x.type==="change").callback();
-  assert($("#heatingTrendNote").textContent.includes("Kuchyně"),"Room filter works");
+  roomSwitch.callback();
+  assert($("#heatingTrendChart").innerHTML.includes("svg-grid-line"),"Room with readings restores heat chart");
   $("#insightRange").value="6";
   listeners.find(x=>x.name==="#insightRange"&&x.type==="change").callback();
-  assert($("#applianceChartNote").textContent.includes("6 měsíců"),"Historical period filter works");
+  assert($("#applianceChart").innerHTML.includes("04/26"),"Six-month history begins in April");
+  assert(!$("#applianceChart").innerHTML.includes("10/25"),"Six-month history excludes older months");
+  assert(!$("#heatingTrendChart").innerHTML.includes("10/25"),"Heat history follows the selected range");
   console.log("Month-first frontend integration smoke passed");
 })().catch(err=>{console.error(err);process.exitCode=1});

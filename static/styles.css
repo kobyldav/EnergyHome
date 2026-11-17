@@ -357,7 +357,6 @@ button,input,select{font:inherit}
 
 /* Historical insights: compact controls and chart semantics in the original flat UI. */
 .insights-card-subtitle{display:block;font-size:11px;color:var(--muted);margin-top:6px;font-weight:500}
-.insights-chart-note{color:var(--muted);font-size:11px;line-height:1.55;padding:3px 15px 15px;margin:0;min-height:38px}
 .chart-card .card-head{align-items:center;gap:10px}
 .insight-select-label{display:flex;align-items:center;gap:6px;flex:none;color:var(--muted);font-size:11px;font-weight:650}
 .insight-select-label select{min-width:115px;max-width:170px;border:1px solid var(--line-strong);border-radius:3px;background:#fff;color:var(--text);font:inherit;padding:7px 8px}
