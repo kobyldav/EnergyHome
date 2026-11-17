@@ -264,20 +264,67 @@ window.EnergyInsights = (() => {
   function renderCostHistory(history){
     const target=document.querySelector('#costChart');
     if(!target)return;
-    const list=(history?.months||[]).slice(-range()).map(m=>({
-      ...m,available:m.fixed_cost!=null||m.variable_cost!=null,partial:m.cost_partial
-    }));
-    if(!list.some(m=>m.available)){
+    const months=(history?.months||[]).slice(-range());
+    const series=[
+      {key:'fixed_cost',label:'Fixní',color:'#799fba'},
+      {key:'variable_cost',label:'Proměnlivé',color:'#277f72'}
+    ];
+    const valid=v=>v!=null&&Number.isFinite(Number(v));
+    const values=months.flatMap(m=>(m.cost_days||[]).flatMap(d=>
+      series.map(it=>d[it.key]).filter(valid).map(Number)));
+    if(!values.length){
       svgChartEmpty('#costChart','Zatím nejsou doložené náklady.',760,280);
       return;
     }
-    historyMonth=history?.selected_month||'';
-    const series=[
-      {label:'Fixní',color:'#799fba',strong:true,value:r=>r.fixed_cost},
-      {label:'Proměnlivé',color:'#277f72',strong:true,value:r=>r.variable_cost}
-    ];
-    target.innerHTML=plotFinanceLines(list,series,760,280).markup+
-      legend(series,82);
+    const W=760,H=280;
+    const min=Math.min(0,...values),max=Math.max(1,...values);
+    const g=svgYAxis(W,H,min,max+Math.max(1,(max-min)*.12),82,18,53,40,
+      v=>Math.round(v).toLocaleString('cs-CZ')+' Kč');
+    const totalDays=months.reduce((sum,m)=>sum+(m.cost_days||[]).length,0);
+    const dayWidth=g.plotW/Math.max(1,totalDays);
+    let offset=0,background='',paths='',hits='',labels='';
+    for(const month of months){
+      const days=month.cost_days||[];
+      if(!days.length)continue;
+      const left=g.left+offset*dayWidth, width=days.length*dayWidth;
+      const x=i=>left+(i+.5)*dayWidth;
+      const selected=month.month===history?.selected_month;
+      if(selected)background+='<rect x="'+left+'" y="'+g.top+'" width="'+width+
+        '" height="'+g.plotH+'" fill="#eaf4f1" opacity=".65"></rect>';
+      if(offset>0)background+='<line x1="'+left+'" x2="'+left+'" y1="'+g.top+
+        '" y2="'+g.base+'" stroke="#d5dfdf" stroke-dasharray="3 4"></line>';
+      labels+='<text class="svg-axis-text" x="'+(left+width/2)+'" y="'+(H-13)+
+        '" text-anchor="middle"'+(selected?' style="font-weight:800;fill:#14685e"':'')+
+        '>'+svg(labelMonth(month.month))+'</text>';
+      // Each month is its own cumulative series: do not connect across resets.
+      for(const item of series){
+        let d='',connected=false,points='';
+        days.forEach((day,i)=>{
+          const v=day[item.key];
+          if(!valid(v)){connected=false;return;}
+          const xx=x(i),yy=g.y(Number(v));
+          d+=(connected?' L ':' M ')+xx.toFixed(2)+' '+yy.toFixed(2);
+          const next=days[i+1]?.[item.key];
+          if(!connected||!valid(next))points+='<circle cx="'+xx+'" cy="'+yy+
+            '" r="2.2" fill="'+item.color+'"></circle>';
+          connected=true;
+        });
+        if(d)paths+='<path data-cost-series="'+item.key+'" data-month="'+svg(month.month)+
+          '" d="'+d+'" fill="none" stroke="'+item.color+'" stroke-width="2.3" stroke-linejoin="round" stroke-linecap="round"></path>'+points;
+      }
+      // Full-height hit targets make individual dates usable even in 12-month view.
+      days.forEach((day,i)=>{
+        const items=series.filter(it=>valid(day[it.key]));
+        if(!items.length)return;
+        const title=day.date+' · '+items.map(it=>it.label+' '+money(day[it.key])).join(' · ')+
+          (month.cost_partial?' · zatím neúplné období':'');
+        hits+='<rect x="'+(left+i*dayWidth)+'" y="'+g.top+'" width="'+dayWidth+
+          '" height="'+g.plotH+'" fill="transparent" pointer-events="all"><title>'+svg(title)+'</title></rect>';
+      });
+      offset+=days.length;
+    }
+    target.innerHTML='<rect class="svg-chart-bg" x="0" y="0" width="'+W+'" height="'+H+'"></rect>'+
+      background+g.grid+legend(series,82)+paths+labels+hits;
   }
   function renderFinancial(history){
     const list=financeView(history);

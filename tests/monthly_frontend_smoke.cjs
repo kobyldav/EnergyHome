@@ -90,6 +90,11 @@ async function fetch(url) {
       months:indexes.map((m,i)=>({
         month:m,electricity_kwh:i>=10?i*10:null,
         fixed_cost:i>=9?50+i:null,variable_cost:i>=10?150+i*5:null,cost_partial:i===11,
+        cost_days:Array.from({length:new Date(Date.UTC(Number(m.slice(0,4)),Number(m.slice(5)),0)).getUTCDate()},(_,d)=>({
+          date:m+'-'+String(d+1).padStart(2,'0'),
+          fixed_cost:i>=9&&(i!==11||d<10)?(d+1)*2:null,
+          variable_cost:i>=10&&d<10?(d+1)*5:null
+        })),
         heat_units:i>=10?i*2:null,
         electricity_status:i>=10?'partial':'missing',
         heat_status:i>=10?'partial':'missing',
@@ -163,10 +168,12 @@ async function flush() {
   const costs=$("#costChart").innerHTML;
   assert(costs.includes("11/25")&&costs.includes("10/26"),"Cost chart shows twelve months");
   assert(costs.includes("Fixní")&&costs.includes("Proměnlivé"),"Cost chart has two series");
-  assert(costs.includes("2026-08 · Fixní"),"Fixed fees are plotted even without consumption readings");
-  assert(!costs.includes("2026-08 · Proměnlivé"),"Missing consumption must not be a zero point");
-  assert(costs.includes("2026-09 · Proměnlivé")&&costs.includes("2026-10 · Proměnlivé"),"Variable costs plotted across months");
-  assert(costs.includes(" L "),"Historical costs must have connected lines");
+  assert(costs.includes("2026-08-01 · Fixní"),"Fixed fees are plotted even without consumption readings");
+  assert(!costs.includes('data-cost-series="variable_cost" data-month="2026-08"'),"Missing consumption must not be a zero point");
+  assert(costs.includes('data-cost-series="variable_cost" data-month="2026-09"')&&costs.includes('data-cost-series="variable_cost" data-month="2026-10"'),"Each month has a separate cumulative curve");
+  assert(costs.includes("2026-10-01 · Fixní")&&costs.includes("2026-10-10 · Fixní"),"Daily dates have tooltips");
+  assert(!costs.includes("2026-10-11 · Fixní"),"Future days have no points");
+  assert(costs.includes(" L "),"Daily costs must have connected lines inside a month");
   assert(costs.includes("zatím neúplné období"),"Incomplete month identified in tooltip");
   assert($("#applianceChart").innerHTML.includes("path"),"Twelve-month appliance breakdown must be drawn");
   assert($("#applianceChart").innerHTML.includes("11/25"),"History chart includes the first of twelve months");

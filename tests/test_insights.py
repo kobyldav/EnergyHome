@@ -98,6 +98,23 @@ class HistoricalInsightsTests(unittest.TestCase):
         self.assertIsNone(bymonth["2026-12"]["fixed_cost"])
         self.assertIsNone(bymonth["2026-12"]["variable_cost"])
 
+        october = bymonth["2026-10"]["cost_days"]
+        self.assertEqual(len(october), 31)
+        self.assertAlmostEqual(october[0]["fixed_cost"], 90 / 31)
+        self.assertIsNone(october[0]["variable_cost"])  # Baseline only
+        self.assertAlmostEqual(october[1]["variable_cost"], 5)
+        self.assertAlmostEqual(october[-1]["fixed_cost"], 90)
+        self.assertAlmostEqual(october[-1]["variable_cost"], 150)
+        november = bymonth["2026-11"]["cost_days"]
+        self.assertAlmostEqual(november[0]["fixed_cost"], 4)
+        self.assertAlmostEqual(november[0]["variable_cost"], 6)  # Reset at month start
+        self.assertAlmostEqual(november[1]["fixed_cost"], 8)
+        self.assertIsNone(november[1]["variable_cost"])  # No further reading
+        self.assertIsNone(november[2]["fixed_cost"])  # Future day
+        self.assertTrue(all(d["variable_cost"] is None for d in bymonth["2026-09"]["cost_days"]))
+        self.assertTrue(all(d["fixed_cost"] is None and d["variable_cost"] is None
+                            for d in bymonth["2026-12"]["cost_days"]))
+
     def test_cost_history_with_no_tariff_has_no_cost_points(self):
         results = history_insights(self.sample(), "2026-11", date(2026, 11, 2))
         self.assertTrue(all(m["fixed_cost"] is None and m["variable_cost"] is None

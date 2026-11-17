@@ -78,8 +78,28 @@ def history_insights(data: dict, selected_month: str, today: date | None = None,
         cost_partial = month == today.strftime("%Y-%m") or actual["cost_incomplete"] or any(
             actual["status"][u] != "complete" for u in priced
         )
+        # Each day is the known month-to-date cost, not a daily bill.
+        # Keep unobserved variable days as gaps and never project future days.
+        rates = {u: float(tariff.get(UTILITIES[u]["price"], 0) or 0) for u in UTILITIES}
+        if actual["heat_cost_estimate"]["mode"] == "missing_allocator_rate":
+            rates["heat"] = 0.0
+        fixed_daily = sum(float(tariff.get(UTILITIES[u]["fixed"], 0) or 0)
+                          for u in UTILITIES) / days_in_month
+        running_variable = 0.0
+        cost_days = []
+        for day in days:
+            observed = has_cost_period and day["date"] <= actual["as_of"]
+            variable_known = observed and any(day["has_allocation"][u] for u in (priced or UTILITIES))
+            if observed:
+                running_variable += sum(day["measured"][u] * rates[u] for u in UTILITIES)
+            cost_days.append({
+                "date": day["date"],
+                "fixed_cost": fixed_daily * day["day"] if observed else None,
+                "variable_cost": running_variable if variable_known else None,
+            })
         result.append({
             "month": month,
+            "cost_days": cost_days,
             "fixed_cost": sum(actual["fixed_costs"].values()) if has_cost_period else None,
             "variable_cost": sum(actual["variable_costs"].values()) if has_cost_period and known_usage else None,
             "cost_partial": cost_partial,
