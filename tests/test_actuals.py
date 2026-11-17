@@ -158,6 +158,64 @@ class AllocatedMonthTests(unittest.TestCase):
         self.assertAlmostEqual(nov_priced["utility_costs"]["heat"],833/30+expected_nov*5)
 
 
+    def test_settlement_aligns_different_dates_and_preserves_later_observed_interval(self):
+        data = self.base()
+        data["meters"].append({"id":"water","utility":"cold_water","name":"Voda",
+                               "base_date":"2026-09-30","base_value":0})
+        data["meter_readings"] = [
+            {"id":"e","meter_id":"meter","date":"2026-10-11","value":111},
+            {"id":"w","meter_id":"water","date":"2026-10-12","value":24},
+        ]
+        data["tariffs"][0].update(cold_water_per_m3=3, cold_water_fixed_monthly=31)
+        data["advances"][0]["cold_water_monthly"] = 310
+        actual = confirmed_month(data,"2026-10",date(2026,10,17))
+        s = actual["settlement"]
+        self.assertTrue(s["available"])
+        self.assertEqual(s["as_of"],"2026-10-11")
+        self.assertEqual(s["covered_days"],11)
+        self.assertFalse(s["cost_incomplete"])
+        self.assertAlmostEqual(s["advance"],330)
+        self.assertAlmostEqual(s["fixed_costs"]["electricity"],110)
+        self.assertAlmostEqual(s["fixed_costs"]["cold_water"],11)
+        self.assertAlmostEqual(s["variable_costs"]["electricity"],22)
+        self.assertAlmostEqual(s["variable_costs"]["cold_water"],66)
+        self.assertAlmostEqual(s["balance"],121)
+        self.assertAlmostEqual(actual["advance"],510)  # KPI unchanged
+        self.assertEqual(s["status"]["electricity"],"to_date")
+
+    def test_settlement_marks_unread_radiator_without_assuming_zero(self):
+        data=self.base()
+        data["meter_readings"]=[{"id":"e","meter_id":"meter","date":"2026-10-11","value":111}]
+        data["heat_allocators"]=[
+            {"id":"h","room":"Ložnice","name":"Radiátor","base_date":"2026-09-30","base_value":0},
+            {"id":"missing","room":"Chodba","name":"Radiátor","base_date":"2026-09-30","base_value":0},
+        ]
+        data["heat_allocator_readings"]=[{"id":"h1","allocator_id":"h","date":"2026-10-12","value":12}]
+        data["tariffs"][0]["heat_per_gj"]=5
+        s=confirmed_month(data,"2026-10",date(2026,10,17))["settlement"]
+        self.assertEqual(s["as_of"],"2026-10-11")
+        self.assertTrue(s["cost_incomplete"])
+        self.assertEqual(s["incomplete_utilities"],["heat"])
+        self.assertEqual(s["missing_devices"]["heat"],["Chodba · Radiátor"])
+        self.assertAlmostEqual(s["variable_costs"]["heat"],55)
+        data["heat_allocators"][1]["always_off"]=True
+        s=confirmed_month(data,"2026-10",date(2026,10,17))["settlement"]
+        self.assertFalse(s["cost_incomplete"])
+        self.assertEqual(s["as_of"],"2026-10-11")
+
+    def test_settlement_does_not_bridge_initial_or_internal_gaps(self):
+        data=self.base()
+        data["meter_readings"]=[
+            {"id":"r1","meter_id":"meter","date":"2026-10-05","value":105},
+            {"id":"r2","meter_id":"meter","date":"2026-10-08","value":99},
+            {"id":"r3","meter_id":"meter","date":"2026-10-12","value":103},
+        ]
+        s=confirmed_month(data,"2026-10",date(2026,10,17))["settlement"]
+        self.assertEqual(s["as_of"],"2026-10-05")
+        self.assertAlmostEqual(s["variable_costs"]["electricity"],10)
+        data["meters"][0]["base_date"]="2026-10-02"
+        self.assertFalse(confirmed_month(data,"2026-10",date(2026,10,17))["settlement"]["available"])
+
     def test_missing_and_invalid_month(self):
         data=self.base()
         v=confirmed_month(data,"2026-10",date(2026,11,1))

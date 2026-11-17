@@ -189,7 +189,7 @@ assert(waterfall.includes("Úspora vůči zálohám")&&waterfall.includes("+"+sa
 sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",paid:2000,actual_cost:1600,cost_incomplete:true},
   [{...wfMonths[0],cost_incomplete:true}]);
 waterfall=elements.get("#waterfallChart").innerHTML;
-assert(waterfall.includes("Zbývá ze záloh")&&waterfall.includes("neúplné náklady")&&!waterfall.includes("Úspora vůči zálohám"),"Unpriced heat never looks like final savings");
+assert(waterfall.includes("Zbývá ze záloh")&&waterfall.includes("chybí údaje")&&!waterfall.includes("Úspora vůči zálohám"),"Unpriced heat never looks like final savings");
 sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",as_of:"2025-10-15",paid:2000,actual_cost:1600},wfMonths);
 assert(elements.get("#waterfallChart").innerHTML.includes("Zbývá ze záloh"),"Ongoing balance is provisional");
 sandbox.drawWaterfall({start:"2025-10-01",end:"2025-10-31",paid:0,actual_cost:50},[]);

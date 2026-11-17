@@ -166,7 +166,18 @@ def allocate_daily(data: dict, month_start: date, month_end: date, today: date):
             (month_start + timedelta(days=offset)).isoformat()
             for offset in range(days_expected)
         }
+        def continuous_days(entity):
+            # First gap ends a comparable month-to-date period, even if
+            # another interval exists later in the month.
+            prefix = 0
+            for offset in range(days_expected):
+                if (month_start + timedelta(days=offset)).isoformat() not in sets.get(entity, set()):
+                    break
+                prefix += 1
+            return prefix
+
         coverage[u] = [{"id": entity, "days":len(sets.get(entity,set())),
+                         "continuous_days": continuous_days(entity),
                          "first": min(sets[entity]) if sets.get(entity) else None,
                          "last": max(sets[entity]) if sets.get(entity) else None,
                          "assumed_zero": bool(device_info.get(entity, {}).get("assumed_zero"))}

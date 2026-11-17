@@ -558,11 +558,12 @@ function drawWaterfall(b,months=[]){
     const value=months.reduce((sum,m)=>sum+Number(m.utility_costs?.[key]||0),0);
     const fixed=months.reduce((sum,m)=>sum+Number(m.fixed_costs?.[key]||0),0);
     const variable=months.reduce((sum,m)=>sum+Number(m.variable_costs?.[key]||0),0);
-    const partial=months.some(m=>(key==='heat'&&m.cost_incomplete)||
+    const partial=months.some(m=>m.incomplete_utilities?m.incomplete_utilities.includes(key):(key==='heat'&&m.cost_incomplete)||
       (Number(m.tariff?.[rateKeys[key]]||0)>0&&m.status&&
         !['complete','to_date'].includes(m.status[key]))||
       (m.measured?.[key]>0&&m.tariff?.effective_from==='0000-00-00'));
-    return {key,label:utilityLabel[key],value,fixed,variable,color:utilitySvgMeta[key].color,partial};
+    const missing=months.flatMap(m=>m.missing_devices?.[key]||[]);
+    return {key,label:utilityLabel[key],value,fixed,variable,color:utilitySvgMeta[key].color,partial,missing};
   });
   const incomplete=utilities.some(r=>r.partial)||Boolean(b.cost_incomplete);
   const remainder=cost-utilities.reduce((sum,r)=>sum+r.value,0);
@@ -570,8 +571,11 @@ function drawWaterfall(b,months=[]){
   const periodStart=String(b.start).slice(0,7),endMonth=String(periodEnd).slice(0,7);
   const period=periodStart===endMonth?monthLabel(periodStart):monthLabel(periodStart)+' – '+monthLabel(endMonth);
   const asOf=b.as_of||'';
+  const dateLabel=iso=>{const [y,m,d]=String(iso).split('-');return d?Number(d)+'. '+Number(m)+'. '+y:iso;};
+  const dateRange=b.aligned&&asOf?' · '+dateLabel(b.start)+' – '+dateLabel(asOf):'';
   const ongoing=Boolean(asOf&&asOf<periodEnd)||endMonth>=currentLocalIsoDate().slice(0,7);
-  const resultLabel=balance<0?'Náklady nad zálohami':incomplete||ongoing?'Zbývá ze záloh':balance>0?'Úspora vůči zálohám':'Vyrovnané zálohy';
+  const provisional=incomplete||(!b.aligned&&ongoing);
+  const resultLabel=balance<0?'Náklady nad zálohami':provisional?'Zbývá ze záloh':balance>0?'Úspora vůči zálohám':'Vyrovnané zálohy';
   const resultColor=balance<0?'#b84c4c':incomplete?'#8b6b35':'#176f64';
   const steps=[{key:'advance',label:'Zálohy',lines:['Zálohy'],value:paid,from:0,to:paid,color:'#658c99'}];
   let running=paid;
@@ -587,7 +591,7 @@ function drawWaterfall(b,months=[]){
       from:running,to:running-remainder,color:'#78858e'});
     running-=remainder;
   }
-  const resultLines=balance<0?['Nad','zálohami']:incomplete||ongoing?['Zbývá','ze záloh']:balance>0?['Úspora','vůči zálohám']:['Vyrovnáno'];
+  const resultLines=balance<0?['Nad','zálohami']:provisional?['Zbývá','ze záloh']:balance>0?['Úspora','vůči zálohám']:['Vyrovnáno'];
   steps.push({key:'balance',label:resultLabel,lines:resultLines,value:balance,from:0,to:balance,color:resultColor});
   if(!months.length&&paid===0&&cost===0)return svgChartEmpty('#waterfallChart','Zatím nejsou doložené finanční údaje.',W,H);
   const values=steps.flatMap(r=>[r.from,r.to]);
@@ -617,7 +621,8 @@ function drawWaterfall(b,months=[]){
     const tip=isTotal?r.label+' · '+money(r.value):
       r.label+' · '+(r.partial?'Známé náklady ':'Náklady ')+money(r.value)+
       (r.fixed!=null?' · Fixní '+money(r.fixed)+' · Proměnlivé '+money(r.variable):'')+
-      ' · Zbývá '+money(r.to)+(r.partial?' · Neúplné údaje':'');
+      ' · Zbývá '+money(r.to)+(r.partial?' · Neúplné údaje':'')+
+      (r.missing?.length?' · Chybí: '+r.missing.join(', '):'');
     if(i<steps.length-1){
       const yy=g.y(r.to);
       connectors+=`<line class="svg-waterfall-connector" x1="${xx+bw/2}" x2="${x(i+1)-bw/2}" y1="${yy}" y2="${yy}"></line>`;
@@ -631,7 +636,7 @@ function drawWaterfall(b,months=[]){
       <text class="waterfall-step-value" x="${xx}" y="${H-8}" text-anchor="middle" fill="${isTotal?r.color:'#46545d'}">${svgSafe(display)}</text>`;
   });
   svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>
-    <text class="waterfall-period" x="18" y="15">${svgSafe(period)}${incomplete?' · * neúplné náklady':ongoing?' · průběžné hodnoty':''}</text>
+    <text class="waterfall-period" x="18" y="15">${svgSafe(period+dateRange)}${incomplete?' · * chybí údaje':b.aligned?' · stejné období':ongoing?' · průběžné hodnoty':''}${b.heat_provisional?' · teplo orientačně':''}</text>
     ${summary}${g.grid}<line class="svg-zero-line" x1="${g.left}" x2="${W-g.right}" y1="${g.y(0)}" y2="${g.y(0)}"></line>
     ${connectors}${bars}${labels}`;
 }

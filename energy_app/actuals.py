@@ -13,6 +13,75 @@ from energy_app.analytics import UTILITIES, advance_for_month, tariff_for_month
 from energy_app.allocation import allocate_daily
 
 
+def aligned_settlement(allocated: dict, first: date, last: date, cutoff: date,
+                       tariff: dict, advances: dict, heat_uses_allocators: bool) -> dict:
+    """Comparable costs and advances for the same observed calendar prefix.
+
+    Missing devices cannot manufacture a zero bill. Retain a provisional
+    comparison for available devices, and identify every missing input.
+    The observed timeline may use a later real reading to allocate earlier
+    days; do not call the allocation engine with an artificially earlier today.
+    """
+    coverage = allocated["coverage"]
+    expected = max(0, (cutoff - first).days + 1)
+    rates = {u: float(tariff.get(UTILITIES[u]["price"], 0) or 0) for u in UTILITIES}
+    required = {u for u in UTILITIES if coverage[u] or rates[u] > 0}
+    entries = [e for u in required for e in coverage[u]]
+    prefixes = [e["continuous_days"] for e in entries
+                if not e["assumed_zero"] and e["continuous_days"] > 0]
+    if prefixes:
+        count = min(prefixes)
+    elif required and all(coverage[u] and all(e["assumed_zero"] for e in coverage[u])
+                          for u in required):
+        count = expected
+    elif not required:
+        # A fixed-only household needs no consumption interval.
+        count = expected
+    else:
+        count = 0
+    count = min(count, expected)
+    if not count or tariff.get("effective_from", "0000-00-00") == "0000-00-00":
+        return {"available": False, "as_of": "", "reason":
+                "Chybí ceník nebo souvislé odečty od začátku měsíce."}
+
+    days = allocated["days"][:count]
+    fraction = count / monthrange(first.year, first.month)[1]
+    fixed = {u: fraction * float(tariff.get(UTILITIES[u]["fixed"], 0) or 0) for u in UTILITIES}
+    measured = {u: sum(d["measured"][u] for d in days) for u in UTILITIES}
+    variable = {u: measured[u] * rates[u] for u in UTILITIES}
+    if heat_uses_allocators and rates["heat"] <= 0:
+        variable["heat"] = 0.0
+    utility_costs = {u: fixed[u] + variable[u] for u in UTILITIES}
+    status = {}
+    incomplete = []
+    missing_devices = {}
+    device_names = {d["id"]: (d["room"] + " · " if d["room"] != "Bez místnosti" else "") + d["name"]
+                    for d in allocated["device_monthly"]}
+    for u in UTILITIES:
+        gaps = [e for e in coverage[u] if e["continuous_days"] < count]
+        missing = u in required and (not coverage[u] or bool(gaps))
+        unpriced_heat = u == "heat" and heat_uses_allocators and rates[u] <= 0 and measured[u] > 0
+        if gaps:
+            missing_devices[u] = [device_names.get(e["id"], e["id"]) for e in gaps]
+        elif missing:
+            missing_devices[u] = ["Chybí měřidlo"]
+        if missing or unpriced_heat:
+            incomplete.append(u)
+        status[u] = ("partial" if any(d["has_allocation"][u] for d in days) else "missing") if missing else (
+            "complete" if count == monthrange(first.year, first.month)[1] else "to_date")
+    total = sum(utility_costs.values())
+    advance = fraction * sum(float(advances.get(u + "_monthly", 0) or 0) for u in UTILITIES)
+    return {
+        "available": True, "start": first.isoformat(), "end": last.isoformat(),
+        "as_of": days[-1]["date"], "covered_days": count, "calendar_days": expected,
+        "advance": advance, "fixed_costs": fixed, "variable_costs": variable,
+        "utility_costs": utility_costs, "total_cost": total, "balance": advance-total,
+        "status": status, "cost_incomplete": bool(incomplete), "incomplete_utilities": incomplete,
+        "missing_devices": missing_devices, "tariff": tariff,
+        "heat_provisional": heat_uses_allocators and rates["heat"] > 0,
+    }
+
+
 def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
     try:
         year, number = map(int, month.split("-"))
@@ -195,6 +264,7 @@ def confirmed_month(data: dict, month: str, today: date | None = None) -> dict:
         "cost_incomplete": heat_cost_estimate["incomplete"],
         "advance": advance, "balance": advance - total_cost,
         "fixed_fraction": fraction,
+        "settlement": aligned_settlement(allocated, first, last, cutoff, tariff, advances, heat_uses_allocators),
         "tariff": tariff, "advance_rule": advances,
         "cost_note": "Měsíční přírůstky vycházejí z odečtů a rovnoměrného rozpočítání mezi dny. Cena radiátorových jednotek je pouze uživatelský orientační odhad, nikoli oficiální vyúčtování domu.",
     }

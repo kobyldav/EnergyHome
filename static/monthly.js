@@ -107,7 +107,16 @@
     // Historical finance lines are rendered by EnergyInsights from neighbor months.
 
     drawExpenseTreeChart([m],{start:v.month,end:v.month});
-    drawWaterfall(b,[v]);
+    // The waterfall compares equal date ranges, independently of the
+    // month-to-today KPI cards. Never reuse their mixed-period totals.
+    const settlement=v.settlement;
+    if(settlement?.available){
+      drawWaterfall({start:settlement.start,end:settlement.end,as_of:settlement.as_of,
+        paid:settlement.advance,actual_cost:settlement.total_cost,current_balance:settlement.balance,
+        cost_incomplete:settlement.cost_incomplete,aligned:true,heat_provisional:settlement.heat_provisional},[settlement]);
+    }else{
+      svgChartEmpty('#waterfallChart',settlement?.reason||'Chybí srovnatelné odečty.',960,350);
+    }
     renderCostSankey([m]);
     renderMonthHeat(v);
     renderMediaDetail(v);
