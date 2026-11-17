@@ -242,7 +242,7 @@
       }
       const other=['costChart','usageChart','applianceChart','cashflowChart','balanceTrendChart',
         'heatingTrendChart','expenseTreeChart','waterfallChart','costSankey'];
-      for(const id of other)svgChartEmpty('#'+id,'Načítám data za měsíc…',id==='expenseTreeChart'||id==='waterfallChart'||id==='costSankey'?960:760,280);
+      for(const id of other)svgChartEmpty('#'+id,'Načítám data za měsíc…',id==='expenseTreeChart'||id==='waterfallChart'||id==='costSankey'?960:760,id==='expenseTreeChart'?320:280);
       refreshMonth();
       return;
     }

@@ -291,9 +291,13 @@ button,input,select{font:inherit}
 .svg-zero-line{stroke:#cbd4d9;stroke-width:1.2}
 .svg-waterfall-positive{fill:#2c8175}.svg-waterfall-negative{fill:#c56a6a}
 .svg-waterfall-connector{stroke:#9eabb3;stroke-width:1.2;stroke-dasharray:5 4}
-.svg-treemap-title{fill:#fff;font-size:14px;font-weight:800}
-.svg-treemap-value{fill:#fff;font-size:12px;font-weight:650}
-.svg-treemap-small{fill:#fff;font-size:10px;font-weight:750}
+.expense-total-label,.expense-col-label{fill:#66747e;font-size:12px;font-weight:650}
+.expense-total-value{fill:#164a42;font-size:24px;font-weight:800}
+.expense-name{fill:#34434d;font-size:14px;font-weight:700}
+.expense-cell{fill:#53616c;font-size:13px;font-weight:550;font-variant-numeric:tabular-nums}
+.expense-strong{fill:#164a42;font-weight:800}
+#expenseTreeChart{min-width:740px}
+@media(max-width:800px){#expenseTreeChart{min-width:740px}.chart-card:has(#expenseTreeChart){overflow-x:auto}}
 @media(max-width:700px){.dashboard-svg-chart{min-width:620px}.chart-card{overflow-x:auto}}
 
 

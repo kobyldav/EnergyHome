@@ -492,20 +492,61 @@ function drawHeatingTrendChart(months){
   svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${g.grid}${bars}${svgMonthLabels(data,x,H)}`;
 }
 function drawExpenseTreeChart(months,billing){
-  const svg=$('#expenseTreeChart'),W=960,H=260;
+  const svg=$('#expenseTreeChart'),W=960,H=320;
   if(!svg||!billing?.start)return svgChartEmpty('#expenseTreeChart','Zatím není co zobrazit.',W,H);
-  const selected=months.filter(m=>m.month>=billing.start&&m.month<=billing.end),keys=['electricity','cold_water','hot_water','gas','heat'];
-  const rows=keys.map(k=>({name:utilityLabel[k],color:utilitySvgMeta[k].color,value:selected.reduce((s,m)=>s+Number(m.utility_costs?.[k]||0),0)})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
-  const total=rows.reduce((s,r)=>s+r.value,0);
-  if(total<=0)return svgChartEmpty('#expenseTreeChart','Zatím není co zobrazit.',W,H);
-  let px=0;
+  const selected=months.filter(m=>m.month>=billing.start&&m.month<=billing.end);
+  if(!selected.length)return svgChartEmpty('#expenseTreeChart','Zatím není co zobrazit.',W,H);
+  const rateKeys={electricity:'electricity_per_kwh',cold_water:'cold_water_per_m3',
+    hot_water:'hot_water_per_m3',gas:'gas_per_m3',heat:'heat_per_gj'};
+  const rows=Object.keys(utilitySvgMeta).map(key=>{
+    const fixed=selected.reduce((sum,m)=>sum+Number(m.fixed_costs?.[key]||0),0);
+    const variable=selected.reduce((sum,m)=>sum+Number(m.variable_costs?.[key]||0),0);
+    const value=fixed+variable;
+    const measured=selected.some(m=>m.measured?.[key]!=null&&(!m.status||m.status[key]!=='missing'));
+    const configured=selected.some(m=>Number(m.tariff?.[rateKeys[key]]||0)>0);
+    const missingPrice=key==='heat'&&selected.some(m=>m.cost_incomplete);
+    const partial=missingPrice||selected.some(m=>Number(m.tariff?.[rateKeys[key]]||0)>0&&
+      m.status&&m.status[key]!=='complete'&&m.status[key]!=='to_date');
+    const known=fixed!==0||variable!==0||measured||configured||missingPrice;
+    return {key,name:utilityLabel[key],color:utilitySvgMeta[key].color,
+      fixed,variable,value,known,partial,variableKnown:!missingPrice&&(variable!==0||measured)};
+  }).sort((a,b)=>b.value-a.value||Number(b.known)-Number(a.known));
+  if(!rows.some(r=>r.known))return svgChartEmpty('#expenseTreeChart','Zatím nejsou doložené náklady.',W,H);
+  const total=rows.reduce((sum,r)=>sum+r.value,0);
+  const max=Math.max(1,...rows.map(r=>r.value));
+  const totalPartial=rows.some(r=>r.partial);
+  const period=billing.start===billing.end?monthLabel(billing.start):monthLabel(billing.start)+' – '+monthLabel(billing.end);
+  const pctFmt=new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:1});
+  const fixedColor='#b8c8c5',barX=184,barW=325;
+  const fmt=v=>svgSafe(money(v));
+  const columns=[['Fixní',600],['Proměnlivé',710],['Celkem',840],['Podíl',936]];
+  const header=`<text class="expense-total-label" x="24" y="23">${svgSafe(totalPartial?'Známé náklady · neúplné':'Náklady celkem')} · ${svgSafe(period)}</text>
+    <text class="expense-total-value" x="24" y="51">${fmt(total)}</text>
+    <rect x="585" y="26" width="14" height="12" rx="2" fill="${fixedColor}"></rect>
+    <text class="svg-legend-text" x="606" y="36">Fixní</text>
+    <rect x="675" y="26" width="14" height="12" rx="2" fill="#277f72"></rect>
+    <text class="svg-legend-text" x="696" y="36">Proměnlivé (barva média)</text>
+    <text class="expense-col-label" x="24" y="77">Médium</text>
+    ${columns.map(([label,x])=>`<text class="expense-col-label" x="${x}" y="77" text-anchor="end">${label}</text>`).join('')}`;
   const blocks=rows.map((r,i)=>{
-    const ww=i===rows.length-1?W-px:W*r.value/total,pct=Math.round(r.value/total*100),x=px;px+=ww;
-    const text=ww>=120?`<text class="svg-treemap-title" x="${x+14}" y="28">${svgSafe(r.name)}</text><text class="svg-treemap-value" x="${x+14}" y="50">${svgSafe(money(r.value))}</text><text class="svg-treemap-value" x="${x+14}" y="70">${pct} %</text>`:
-      (ww>=70?`<text class="svg-treemap-small" x="${x+ww/2}" y="31" text-anchor="middle">${svgSafe(r.name)}</text><text class="svg-treemap-small" x="${x+ww/2}" y="50" text-anchor="middle">${pct} %</text>`:'');
-    return `<rect x="${x}" y="0" width="${ww}" height="${H}" style="fill:${r.color}"><title>${svgSafe(r.name)} · ${svgSafe(money(r.value))} · ${pct} %</title></rect>${text}`;
+    const y=84+i*44,fh=barW*Math.max(0,r.fixed)/max,vh=barW*Math.max(0,r.variable)/max;
+    const share=total>0&&r.known?pctFmt.format(r.value/total*100)+' %':'—';
+    const title=r.name+' · Fixní '+(r.known?money(r.fixed):'—')+' · Proměnlivé '+
+      (r.variableKnown?money(r.variable):'—')+' · Známé náklady '+money(r.value)+
+      (r.partial?' · Neúplné údaje':'');
+    return `<g data-expense-utility="${r.key}"><title>${svgSafe(title)}</title>
+      <rect x="12" y="${y}" width="936" height="40" rx="4" fill="${i%2===0?'#f5f7f8':'#fff'}"></rect>
+      <rect x="24" y="${y+13}" width="5" height="15" rx="2" fill="${r.color}"></rect>
+      <text class="expense-name" x="37" y="${y+24}">${svgSafe(r.name)}</text>
+      <rect x="${barX}" y="${y+13}" width="${barW}" height="14" rx="3" fill="#e7ecee"></rect>
+      ${fh>0?`<rect x="${barX}" y="${y+13}" width="${fh}" height="14" fill="${fixedColor}"></rect>`:''}
+      ${vh>0?`<rect x="${barX+fh}" y="${y+13}" width="${vh}" height="14" fill="${r.color}"></rect>`:''}
+      <text class="expense-cell" x="600" y="${y+24}" text-anchor="end">${r.known?fmt(r.fixed):'—'}</text>
+      <text class="expense-cell" x="710" y="${y+24}" text-anchor="end">${r.variableKnown?fmt(r.variable):'—'}</text>
+      <text class="expense-cell expense-strong" x="840" y="${y+24}" text-anchor="end">${r.known?fmt(r.value):'—'}${r.partial?'*':''}</text>
+      <text class="expense-cell" x="936" y="${y+24}" text-anchor="end">${svgSafe(share)}</text></g>`;
   }).join('');
-  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${blocks}`;
+  svg.innerHTML=`<rect class="svg-chart-bg" x="0" y="0" width="${W}" height="${H}"></rect>${header}${blocks}`;
 }
 function drawWaterfall(b){
   const svg=$('#waterfallChart'),W=960,H=260;

@@ -160,6 +160,8 @@ async function flush() {
   assert.equal($("#kpiElectricity").textContent,"100 kWh");
   assert.equal($("#kpiColdWater").textContent,"—");
   assert($("#actualCost").textContent.includes("205"),"Confirmed costs should be visible");
+  assert($("#expenseTreeChart").innerHTML.includes("26/10"),"Expense structure follows the selected month");
+  assert($("#expenseTreeChart").innerHTML.includes("Elektřina · Fixní"),"Expense structure uses actual cost components");
   assert($("#billingPeriod").textContent.includes("2026"),"Financial card shares month");
   assert($("#usageChart").innerHTML.includes(" L "),"Daily electricity chart must use connected lines");
   assert($("#usageChart").innerHTML.includes("stroke-dasharray"),"Appliance model lines must be visibly distinct");
@@ -201,6 +203,7 @@ async function flush() {
   handler.callback();
   await flush();
   assert($("#billingPeriod").textContent.includes("Září 2026"),"All panels update together");
+  assert($("#expenseTreeChart").innerHTML.includes("26/09"),"Expense structure follows month changes");
   assert.equal($("#currentBalance").textContent,"Neúplné","Missing heat rate must not show complete balance");
   assert(!$("#actualCost").textContent.includes("orientační náklady"),"Removed heat detail must not reappear");
   assert(calls>=5,"Month, history and application data should be requested");

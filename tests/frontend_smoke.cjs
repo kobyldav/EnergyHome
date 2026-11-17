@@ -153,6 +153,25 @@ const emptySvg = elements.get("#mediaChart-heat").innerHTML;
 assert(emptySvg.includes("Zatím není co zobrazit."), "No heat data must show an empty message");
 assert(!emptySvg.includes("svg-grid-line"), "No heat data must not show axes or grid");
 
+// Cost ranking shows every utility with a stable row and separate components.
+sandbox.drawExpenseTreeChart([{
+  month:"2026-10",
+  fixed_costs:{electricity:100,heat:200,cold_water:0,hot_water:0,gas:0},
+  variable_costs:{electricity:300,heat:600,cold_water:100,hot_water:0,gas:0},
+  measured:{electricity:20,heat:30,cold_water:5,hot_water:null,gas:null},
+  status:{electricity:"complete",heat:"complete",cold_water:"complete",hot_water:"missing",gas:"missing"}
+}],{start:"2026-10",end:"2026-10"});
+const expense=elements.get("#expenseTreeChart").innerHTML;
+assert(expense.indexOf('data-expense-utility="heat"')<expense.indexOf('data-expense-utility="electricity"'),"Largest expense is first");
+assert.equal((expense.match(/data-expense-utility=/g)||[]).length,5,"Even small and unknown utility categories retain a row");
+assert(expense.includes("Fixní")&&expense.includes("Proměnlivé")&&expense.includes("Podíl"),"Components and shares visible");
+assert(expense.includes("61,5 %"),"Share is calculated against all known expenses");
+assert(expense.includes("Teplo · Fixní "+sandbox.money(200)+" · Proměnlivé "+sandbox.money(600)),"Exact component tooltip");
+assert(expense.includes("Plyn · Fixní — · Proměnlivé —"),"Missing utility costs are not presented as zero");
+sandbox.drawExpenseTreeChart([{month:"2026-11",fixed_costs:{heat:20},variable_costs:{heat:0},
+  measured:{heat:12},status:{heat:"partial"},cost_incomplete:true}],{start:"2026-11",end:"2026-11"});
+assert(elements.get("#expenseTreeChart").innerHTML.includes("neúplné"),"Unpriced heat is identified as incomplete");
+
 setImmediate(() => {
   try {
     assert(fetchCalls.includes("/api/state"), "Application did not begin loading persisted data");
